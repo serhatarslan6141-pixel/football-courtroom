@@ -553,10 +553,27 @@ def get_match(match_id: str) -> SyntheticMatch:
     return MATCH_LIBRARY[match_id]
 
 
-def calculate_match_state(events: Sequence[Dict[str, Any]], through_event: Optional[int] = None) -> Dict[str, Any]:
-    event_slice = list(events)
+def calculate_match_state(
+    events: Sequence[Dict[str, Any]],
+    through_event: Optional[int] = None,
+    through_timestamp: Optional[int] = None,
+) -> Dict[str, Any]:
+    ordered_events = sorted(
+        list(events),
+        key=lambda item: (
+            int(item.get("timestamp", 0) or 0),
+            int(item.get("index", 0) or 0),
+        ),
+    )
+
     if through_event is not None:
-        event_slice = event_slice[: max(0, min(through_event, len(event_slice)))]
+        ordered_events = ordered_events[: max(0, min(int(through_event), len(ordered_events)))]
+
+    if through_timestamp is not None:
+        cutoff = int(through_timestamp)
+        ordered_events = [event for event in ordered_events if int(event.get("timestamp", 0) or 0) <= cutoff]
+
+    event_slice = ordered_events
 
     if not event_slice:
         return {
@@ -578,6 +595,7 @@ def calculate_match_state(events: Sequence[Dict[str, Any]], through_event: Optio
             "attacking_third_entries": {"home": 0, "away": 0},
             "recent_attacking_activity": {"home": 0, "away": 0},
             "through_event": 0,
+            "through_timestamp": through_timestamp,
             "synthetic": True,
         }
 
@@ -697,6 +715,7 @@ def calculate_match_state(events: Sequence[Dict[str, Any]], through_event: Optio
         "attacking_third_entries": attacking_third_entries,
         "recent_attacking_activity": recent_attacking_activity,
         "through_event": len(event_slice),
+        "through_timestamp": through_timestamp,
         "synthetic": True,
     }
     return output

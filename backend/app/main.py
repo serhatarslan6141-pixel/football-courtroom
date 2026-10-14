@@ -96,9 +96,14 @@ async def fetch_match_events(match_id: str) -> dict[str, object]:
 async def fetch_match_state(
     match_id: str,
     through_event: Optional[int] = Query(default=None, ge=0),
+    through_timestamp: Optional[int] = Query(default=None, ge=0),
 ) -> dict[str, object]:
     match = get_match(match_id)
-    state = calculate_match_state(match.events, through_event=through_event)
+    state = calculate_match_state(
+        match.events,
+        through_event=through_event,
+        through_timestamp=through_timestamp,
+    )
     return {"match_id": match_id, "through_event": state["through_event"], "state": state, "synthetic": True}
 
 

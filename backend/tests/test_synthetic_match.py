@@ -126,6 +126,49 @@ def test_match_state_at_different_replay_positions():
     assert second_state["match_clock_seconds"] >= first_state["match_clock_seconds"]
 
 
+def test_match_state_at_replay_timestamps_excludes_future_events():
+    match = generate_match(101)
+    event_timestamps = sorted({event["timestamp"] for event in match.events})
+    cutoff = event_timestamps[len(event_timestamps) // 2]
+
+    state = calculate_match_state(match.events, through_timestamp=cutoff)
+    observed = [event for event in match.events if event["timestamp"] <= cutoff]
+
+    assert state["through_event"] == len(observed)
+    assert state["match_clock_seconds"] == cutoff
+    assert state["score"] == {
+        "home": sum(1 for event in observed if event["event_type"] == "goal" and event["team_id"] == "home"),
+        "away": sum(1 for event in observed if event["event_type"] == "goal" and event["team_id"] == "away"),
+    }
+    assert state["pass_attempts"] == {
+        "home": sum(1 for event in observed if event["event_type"] == "pass" and event["team_id"] == "home"),
+        "away": sum(1 for event in observed if event["event_type"] == "pass" and event["team_id"] == "away"),
+    }
+    assert state["shots"] == {
+        "home": sum(1 for event in observed if event["event_type"] == "shot" and event["team_id"] == "home"),
+        "away": sum(1 for event in observed if event["event_type"] == "shot" and event["team_id"] == "away"),
+    }
+    assert all(event["timestamp"] <= cutoff for event in observed)
+    assert all(event["timestamp"] > cutoff for event in match.events if event not in observed)
+
+
+def test_match_state_counts_cards_and_pressure_events_from_event_data():
+    events = [
+        {"event_id": "evt-1", "index": 0, "timestamp": 10, "minute": "00:10", "team_id": "home", "event_type": "pressure_event", "metadata": {"team_name": "Home", "player_name": "A", "location": {"x": 80, "y": 40}, "possession_seconds": 7.0}},
+        {"event_id": "evt-2", "index": 1, "timestamp": 20, "minute": "00:20", "team_id": "home", "event_type": "card", "metadata": {"team_name": "Home", "player_name": "B", "card_type": "yellow"}},
+        {"event_id": "evt-3", "index": 2, "timestamp": 25, "minute": "00:25", "team_id": "away", "event_type": "pressure_event", "metadata": {"team_name": "Away", "player_name": "C", "location": {"x": 25, "y": 50}, "possession_seconds": 4.0}},
+        {"event_id": "evt-4", "index": 3, "timestamp": 35, "minute": "00:35", "team_id": "away", "event_type": "card", "metadata": {"team_name": "Away", "player_name": "D", "card_type": "red"}},
+        {"event_id": "evt-5", "index": 4, "timestamp": 90, "minute": "01:30", "team_id": "home", "event_type": "goal", "metadata": {"team_name": "Home", "player_name": "E"}},
+    ]
+
+    state = calculate_match_state(events)
+
+    assert state["yellow_cards"] == {"home": 1, "away": 0}
+    assert state["red_cards"] == {"home": 0, "away": 1}
+    assert state["pressure_events"] == {"home": 1, "away": 1}
+    assert state["score"] == {"home": 1, "away": 0}
+
+
 def test_api_endpoints_and_sse_response():
     client = TestClient(app)
     matches_response = client.get("/api/matches")
