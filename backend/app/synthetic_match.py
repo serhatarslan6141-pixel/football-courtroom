@@ -236,6 +236,21 @@ def _make_team(team_config: Dict[str, Any], rng: random.Random, team_id_suffix: 
     )
 
 
+def _normalize_team_key(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"home", "away"}:
+            return normalized
+        if normalized in {"0", "1"}:
+            return "home" if normalized == "0" else "away"
+        return None
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return "home" if int(value) == 0 else "away"
+    return None
+
+
 def _append_event(
     events: List[Dict[str, Any]],
     *,
@@ -299,7 +314,7 @@ def generate_match(seed: int, match_id: Optional[str] = None) -> SyntheticMatch:
     events: List[Dict[str, Any]] = []
     home_score = 0
     away_score = 0
-    current_possession = "home" if seed % 2 == 0 else "away"
+    current_possession = rng.choice(["home", "away"])
     event_index = 0
 
     def add_event(team_id: str, event_type: str, timestamp: int, *, player: Optional[Player] = None, x: Optional[float] = None, y: Optional[float] = None, **metadata: Any) -> None:
@@ -461,14 +476,14 @@ def generate_match(seed: int, match_id: Optional[str] = None) -> SyntheticMatch:
                         description=f"{shot_player.name} scores for {attacking_team.name}.",
                     )
 
-            if rng.random() < 0.06:
-                current_possession = team_id
+            if rng.random() < 0.35:
+                current_possession = "away" if team_id == "home" else "home"
                 add_event(
                     team_id,
                     "possession_change",
                     event_time + 8,
                     previous_team="away" if team_id == "home" else "home",
-                    new_team=team_id,
+                    new_team=current_possession,
                     reason="pressing_shift",
                     possession_seconds=round(rng.uniform(3.0, 9.0), 1),
                     description=f"{attacking_team.name} win possession after a transition.",
@@ -583,8 +598,10 @@ def calculate_match_state(events: Sequence[Dict[str, Any]], through_event: Optio
     clock_seconds = 0
 
     for event in event_slice:
-        team_id = str(event.get("team_id", "home"))
-        if team_id not in {"home", "away"}:
+        team_id = _normalize_team_key(event.get("team_id"))
+        if team_id is None:
+            team_id = _normalize_team_key((event.get("metadata") or {}).get("team_id"))
+        if team_id is None:
             continue
         if event.get("timestamp") is not None:
             clock_seconds = max(clock_seconds, int(event["timestamp"]))
@@ -631,7 +648,7 @@ def calculate_match_state(events: Sequence[Dict[str, Any]], through_event: Optio
             if (team_id == "home" and location_x > 66) or (team_id == "away" and location_x < 34):
                 attacking_third_entries[team_id] += 1
         elif event.get("event_type") == "possession_change":
-            destination = str((event.get("metadata", {}) or {}).get("new_team", team_id))
+            destination = _normalize_team_key((event.get("metadata", {}) or {}).get("new_team")) or team_id
             possession_proxy[destination] += 1
 
     possession = {"home": 0.0, "away": 0.0}

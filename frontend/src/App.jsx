@@ -43,6 +43,79 @@ const formatClock = (seconds) => {
   return `${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`
 }
 
+const normalizeTeamKey = (value) => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'home' || normalized === 'away') {
+      return normalized
+    }
+    if (normalized === '0') {
+      return 'home'
+    }
+    if (normalized === '1') {
+      return 'away'
+    }
+  }
+
+  if (value === 0 || value === 1) {
+    return value === 0 ? 'home' : 'away'
+  }
+
+  return null
+}
+
+const formatPercent = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return 'N/A'
+  }
+  return `${numeric.toFixed(1)}%`
+}
+
+const formatPassRate = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return 'N/A'
+  }
+  return `${(numeric * 100).toFixed(1)}%`
+}
+
+const describeEvent = (event, matchData) => {
+  const metadata = event?.metadata || {}
+  if (metadata.description) {
+    return metadata.description
+  }
+
+  const teamName = normalizeTeamKey(event.team_id) === 'home' ? matchData?.home_team : matchData?.away_team
+  const playerName = metadata.player_name || 'Player'
+  const playerLabel = metadata.recipient_name ? `${playerName} to ${metadata.recipient_name}` : playerName
+
+  switch (event.event_type) {
+    case 'pass':
+      return `${playerLabel} ${metadata.outcome === 'complete' ? 'completes' : 'attempts'} a pass.`
+    case 'pressure_event':
+      return `${playerName} presses high to regain possession.`
+    case 'shot':
+      return `${playerName} takes a shot ${metadata.outcome === 'goal' ? 'and scores' : 'with intent'}.`
+    case 'goal':
+      return `${playerName} scores for ${teamName}.`
+    case 'foul':
+      return `${playerName} commits a foul.`
+    case 'substitution':
+      return `${metadata.player_in_name || 'Substitute'} comes on for ${metadata.player_out_name || 'the outgoing player'}.`
+    case 'tackle':
+      return `${playerName} makes a challenge.`
+    case 'kickoff':
+      return `${teamName} kick off.`
+    case 'whistle':
+      return 'The referee blows for full time.'
+    case 'card':
+      return `${playerName} is booked.`
+    default:
+      return event.event_type.replace(/_/g, ' ')
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState('landing')
   const [entered, setEntered] = useState(false)
@@ -142,6 +215,12 @@ function App() {
 
   const activeScore = state?.score || { home: 0, away: 0 }
   const scoreText = `${activeScore.home} - ${activeScore.away}`
+  const possession = state?.possession || { home: 0, away: 0 }
+  const passCompletion = state?.pass_completion || { home: null, away: null }
+  const homePossession = Number(possession.home) || 0
+  const awayPossession = Number(possession.away) || 0
+  const homePassRate = Number(passCompletion.home)
+  const awayPassRate = Number(passCompletion.away)
 
   const handleReset = () => {
     setCurrentIndex(0)
@@ -425,13 +504,16 @@ function App() {
                   <div className="stat-box">
                     <span>Possession</span>
                     <strong>
-                      {state.possession.home}% - {state.possession.away}%
+                      {Number.isFinite(homePossession) && Number.isFinite(awayPossession)
+                        ? `${formatPercent(homePossession)} - ${formatPercent(awayPossession)}`
+                        : 'N/A - N/A'}
                     </strong>
                   </div>
                   <div className="stat-box">
                     <span>Pass completion</span>
                     <strong>
-                      {state.pass_completion.home * 100}% - {state.pass_completion.away * 100}%
+                      {Number.isFinite(homePassRate) ? formatPassRate(homePassRate) : 'N/A'} -{' '}
+                      {Number.isFinite(awayPassRate) ? formatPassRate(awayPassRate) : 'N/A'}
                     </strong>
                   </div>
                   <div className="stat-box">
@@ -472,17 +554,19 @@ function App() {
               </div>
 
               <ul className="event-list">
-                {liveEvents.map((event) => (
-                  <li key={event.event_id}>
-                    <span className="event-time">{event.minute}</span>
-                    <div>
-                      <strong>{event.event_type}</strong>
-                      <small>
-                        {event.team_id === 'home' ? matchData?.home_team : matchData?.away_team}
-                      </small>
-                    </div>
-                  </li>
-                ))}
+                {liveEvents.map((event) => {
+                  const eventTeam = normalizeTeamKey(event.team_id) === 'home' ? matchData?.home_team : matchData?.away_team
+                  return (
+                    <li key={event.event_id}>
+                      <span className="event-time">{event.minute}</span>
+                      <div>
+                        <strong>{event.event_type.replace(/_/g, ' ')}</strong>
+                        <small>{eventTeam}</small>
+                        <p>{describeEvent(event, matchData)}</p>
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           </div>

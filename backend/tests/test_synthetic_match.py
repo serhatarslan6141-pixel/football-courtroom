@@ -65,6 +65,24 @@ def test_pass_statistics_match_event_data():
     assert completed_passes == sum(state["pass_completions"].values())
 
 
+def test_both_teams_have_measurable_possession_and_pass_accuracy():
+    for seed in (101, 202, 303):
+        match = generate_match(seed)
+        state = calculate_match_state(match.events)
+        assert sum(state["possession"].values()) == pytest.approx(100.0)
+        assert state["possession"]["home"] > 0
+        assert state["possession"]["away"] > 0
+        assert any(event["team_id"] == "away" for event in match.events)
+        assert state["pass_attempts"]["home"] >= 0
+        assert state["pass_attempts"]["away"] >= 0
+        assert (state["pass_attempts"]["home"] == 0 and state["pass_completion"]["home"] is None) or (
+            state["pass_attempts"]["home"] > 0 and state["pass_completion"]["home"] is not None
+        )
+        assert (state["pass_attempts"]["away"] == 0 and state["pass_completion"]["away"] is None) or (
+            state["pass_attempts"]["away"] > 0 and state["pass_completion"]["away"] is not None
+        )
+
+
 def test_distinct_matchups_and_teams():
     matches = [generate_match(seed) for seed in (101, 202, 303)]
     pairings = {(match.home_team.name, match.away_team.name) for match in matches}
