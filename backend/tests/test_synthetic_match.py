@@ -65,6 +65,40 @@ def test_pass_statistics_match_event_data():
     assert completed_passes == sum(state["pass_completions"].values())
 
 
+def test_distinct_matchups_and_teams():
+    matches = [generate_match(seed) for seed in (101, 202, 303)]
+    pairings = {(match.home_team.name, match.away_team.name) for match in matches}
+    assert len(pairings) >= 3
+    assert {match.home_team.name for match in matches} | {match.away_team.name for match in matches} == {
+        "Northbridge City",
+        "Harbor Athletic",
+        "Mossfield United",
+        "Riverside Athletic",
+        "Ashcombe Rovers",
+        "Briarhampton FC",
+    }
+
+
+def test_possession_is_event_weighted_and_not_fixed_50():
+    match = generate_match(55)
+    state = calculate_match_state(match.events)
+    assert round(state["possession"]["home"] + state["possession"]["away"], 2) == 100.0
+    assert state["possession"]["home"] != 50 or state["possession"]["away"] != 50
+
+
+def test_event_metadata_contains_player_team_and_location_details():
+    match = generate_match(88)
+    event_types = {"pass", "pressure_event", "shot", "foul", "substitution", "card"}
+    assert any(event["event_type"] in event_types for event in match.events)
+    for event in match.events:
+        metadata = event.get("metadata", {})
+        if event["event_type"] in {"pass", "pressure_event", "shot", "foul", "substitution", "card"}:
+            assert metadata.get("team_name")
+            assert metadata.get("player_name")
+            if event["event_type"] in {"pass", "pressure_event", "shot"}:
+                assert "location" in metadata or "start" in metadata or "end" in metadata
+
+
 def test_match_state_at_different_replay_positions():
     match = generate_match(31)
     first_state = calculate_match_state(match.events, through_event=5)
