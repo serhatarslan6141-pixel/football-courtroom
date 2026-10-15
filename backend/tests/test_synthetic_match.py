@@ -3,6 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.case_detection import detect_cases
 from app.main import app
 from app.synthetic_match import calculate_match_state, generate_match
 
@@ -167,6 +168,72 @@ def test_match_state_counts_cards_and_pressure_events_from_event_data():
     assert state["red_cards"] == {"home": 0, "away": 1}
     assert state["pressure_events"] == {"home": 1, "away": 1}
     assert state["score"] == {"home": 1, "away": 0}
+
+
+def test_detect_substitution_impact_case_from_event_data():
+    events = [
+        {"event_id": "e1", "index": 0, "timestamp": 10, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+        {"event_id": "e2", "index": 1, "timestamp": 15, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+        {"event_id": "e3", "index": 2, "timestamp": 20, "team_id": "home", "event_type": "pressure_event", "metadata": {"team_name": "Northbridge", "player_name": "B", "location": {"x": 75, "y": 40}, "possession_seconds": 4.2}},
+        {"event_id": "e4", "index": 3, "timestamp": 30, "team_id": "home", "event_type": "substitution", "metadata": {"team_name": "Northbridge", "player_name": "C", "player_in_name": "Sub 1", "player_out_name": "Out 1"}},
+        {"event_id": "e5", "index": 4, "timestamp": 60, "team_id": "home", "event_type": "pressure_event", "metadata": {"team_name": "Northbridge", "player_name": "Sub 1", "location": {"x": 78, "y": 45}, "possession_seconds": 5.5}},
+        {"event_id": "e6", "index": 5, "timestamp": 65, "team_id": "home", "event_type": "shot", "metadata": {"team_name": "Northbridge", "player_name": "Sub 1", "on_target": True, "outcome": "saved"}},
+        {"event_id": "e7", "index": 6, "timestamp": 72, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "Sub 1"}},
+        {"event_id": "e8", "index": 7, "timestamp": 78, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "Sub 1"}},
+        {"event_id": "e9", "index": 8, "timestamp": 82, "team_id": "away", "event_type": "pressure_event", "metadata": {"team_name": "Harbor", "player_name": "D", "location": {"x": 25, "y": 55}, "possession_seconds": 3.4}},
+    ]
+
+    cases = detect_cases(events, through_timestamp=90)
+    substitution_cases = [case for case in cases if case["case_type"] == "substitution_impact"]
+    assert substitution_cases
+    assert substitution_cases[0]["teams"]["team_id"] == "home"
+    assert substitution_cases[0]["trigger_event_ids"] == ["e4"]
+
+
+def test_detect_momentum_shift_and_missed_opportunity_cases():
+    events = [
+        {"event_id": "m1", "index": 0, "timestamp": 10, "team_id": "away", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Harbor", "player_name": "A"}},
+        {"event_id": "m2", "index": 1, "timestamp": 15, "team_id": "away", "event_type": "pressure_event", "metadata": {"team_name": "Harbor", "player_name": "A", "location": {"x": 64, "y": 48}, "possession_seconds": 5.0}},
+        {"event_id": "m3", "index": 2, "timestamp": 18, "team_id": "home", "event_type": "possession_change", "metadata": {"team_name": "Northbridge", "player_name": "B", "new_team": "home"}},
+        {"event_id": "m4", "index": 3, "timestamp": 30, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "B"}},
+        {"event_id": "m5", "index": 4, "timestamp": 35, "team_id": "home", "event_type": "pressure_event", "metadata": {"team_name": "Northbridge", "player_name": "B", "location": {"x": 70, "y": 52}, "possession_seconds": 7.1}},
+        {"event_id": "m6", "index": 5, "timestamp": 40, "team_id": "home", "event_type": "shot", "metadata": {"team_name": "Northbridge", "player_name": "B", "outcome": "off_target", "on_target": False}},
+        {"event_id": "m7", "index": 6, "timestamp": 45, "team_id": "away", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Harbor", "player_name": "C"}},
+        {"event_id": "m8", "index": 7, "timestamp": 52, "team_id": "away", "event_type": "pressure_event", "metadata": {"team_name": "Harbor", "player_name": "C", "location": {"x": 28, "y": 50}, "possession_seconds": 4.5}},
+    ]
+
+    cases = detect_cases(events, through_timestamp=60)
+    case_types = {case["case_type"] for case in cases}
+    assert "momentum_shift" in case_types
+    assert "missed_opportunity" in case_types
+
+
+def test_no_case_when_evidence_is_insufficient_or_future_event_leakage_prevented():
+    events = [
+        {"event_id": "f1", "index": 0, "timestamp": 10, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+        {"event_id": "f2", "index": 1, "timestamp": 20, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+        {"event_id": "f3", "index": 2, "timestamp": 30, "team_id": "home", "event_type": "substitution", "metadata": {"team_name": "Northbridge", "player_name": "B", "player_in_name": "Sub 2", "player_out_name": "Out 2"}},
+        {"event_id": "f4", "index": 3, "timestamp": 35, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+    ]
+
+    early_cases = detect_cases(events, through_timestamp=25)
+    assert not early_cases
+
+    late_cases = detect_cases(events, through_timestamp=50)
+    assert not late_cases
+
+
+def test_api_returns_structured_cases_for_selected_match():
+    match = generate_match(202)
+    response = detect_cases(match.events, through_timestamp=match.events[-1]["timestamp"])
+    assert response
+    case = response[0]
+    assert case["case_id"]
+    assert case["match_id"] == match.match_id
+    assert case["case_type"]
+    assert case["title"]
+    assert case["evidence"]
+    assert case["counterevidence"]
 
 
 def test_api_endpoints_and_sse_response():

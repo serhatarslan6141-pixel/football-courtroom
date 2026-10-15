@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from .case_detection import detect_cases
 from .synthetic_match import MATCH_LIBRARY, calculate_match_state, get_match, list_available_matches
 
 app = FastAPI(title="Football Courtroom API", version="0.1.0")
@@ -105,6 +106,22 @@ async def fetch_match_state(
         through_timestamp=through_timestamp,
     )
     return {"match_id": match_id, "through_event": state["through_event"], "state": state, "synthetic": True}
+
+
+@app.get("/api/matches/{match_id}/cases")
+async def fetch_match_cases(
+    match_id: str,
+    through_event: Optional[int] = Query(default=None, ge=0),
+    through_timestamp: Optional[int] = Query(default=None, ge=0),
+) -> dict[str, object]:
+    match = get_match(match_id)
+    cases = detect_cases(
+        match.events,
+        through_event=through_event,
+        through_timestamp=through_timestamp,
+        match_id=match_id,
+    )
+    return {"match_id": match_id, "count": len(cases), "cases": cases, "synthetic": True}
 
 
 @app.get("/api/matches/{match_id}/stream")
