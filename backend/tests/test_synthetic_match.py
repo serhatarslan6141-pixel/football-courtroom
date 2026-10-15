@@ -223,6 +223,17 @@ def test_no_case_when_evidence_is_insufficient_or_future_event_leakage_prevented
     assert not late_cases
 
 
+def test_requires_minimum_history_before_labeling_a_significant_change():
+    events = [
+        {"event_id": "m1", "index": 0, "timestamp": 10, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+        {"event_id": "m2", "index": 1, "timestamp": 15, "team_id": "home", "event_type": "pressure_event", "metadata": {"team_name": "Northbridge", "player_name": "A", "location": {"x": 70, "y": 55}, "possession_seconds": 4.0}},
+        {"event_id": "m3", "index": 2, "timestamp": 18, "team_id": "home", "event_type": "pass", "metadata": {"outcome": "complete", "team_name": "Northbridge", "player_name": "A"}},
+        {"event_id": "m4", "index": 3, "timestamp": 24, "team_id": "home", "event_type": "shot", "metadata": {"team_name": "Northbridge", "player_name": "A", "outcome": "off_target", "on_target": False}},
+    ]
+
+    assert not detect_cases(events, through_timestamp=30)
+
+
 def test_api_returns_structured_cases_for_selected_match():
     match = generate_match(202)
     response = detect_cases(match.events, through_timestamp=match.events[-1]["timestamp"])

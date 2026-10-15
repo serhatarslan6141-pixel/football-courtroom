@@ -280,6 +280,19 @@ button {
   color: var(--muted);
 }
 
+.match-note {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  background: rgba(251, 191, 36, 0.08);
+  color: var(--gold);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .match-picker select {
   min-width: min(100%, 280px);
   padding: 0.7rem 0.9rem;

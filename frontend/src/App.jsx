@@ -47,6 +47,59 @@ const formatPassRate = (value) => {
   return `${(numeric * 100).toFixed(1)}%`
 }
 
+const getTeamNameForId = (teamKey, matchData) => {
+  if (!teamKey) {
+    return null
+  }
+
+  const normalizedKey = String(teamKey).trim().toLowerCase()
+  if (normalizedKey === 'home') {
+    return matchData?.home_team || 'Home'
+  }
+  if (normalizedKey === 'away') {
+    return matchData?.away_team || 'Away'
+  }
+
+  const teamMatch = matchData
+    ? [
+        { teamId: 'home', name: matchData.home_team },
+        { teamId: 'away', name: matchData.away_team },
+      ].find((entry) => {
+        const candidate = entry.name.toLowerCase().replace(/[^a-z]/g, '')
+        return candidate.includes(normalizedKey.replace(/[^a-z]/g, ''))
+      })
+    : null
+
+  if (teamMatch) {
+    return teamMatch.name
+  }
+
+  return teamKey
+}
+
+const getMatchHeadline = (matchData) => {
+  if (!matchData) {
+    return 'Selected match'
+  }
+  return `${matchData.home_team} vs ${matchData.away_team}`
+}
+
+const getCaseDisplayTitle = (caseItem, matchData) => {
+  if (!caseItem) {
+    return 'Case'
+  }
+
+  let title = caseItem.title || 'Case'
+  const teamId = caseItem.teams?.team_id || caseItem.team_id
+  const teamName = getTeamNameForId(teamId, matchData)
+
+  if (teamName) {
+    title = title.replace(/\bHome\b|\bAway\b|\bhome\b|\baway\b/g, teamName)
+  }
+
+  return title
+}
+
 const describeEvent = (event, matchData) => {
   const metadata = event?.metadata || {}
   if (metadata.description) {
@@ -353,15 +406,14 @@ function App() {
     <main className="live-page">
       <div className="live-header">
         <div>
-          <p className="eyebrow">Synthetic Match Feed</p>
-          <h2>Live Match Replay</h2>
+          <p className="eyebrow">Match Replay</p>
+          <h2>Live Match</h2>
         </div>
-        <span className="synthetic-badge">Deterministic evidence</span>
       </div>
 
       {matchLoading ? (
         <section className="panel status-panel">
-          <p className="empty-state">Loading synthetic matches…</p>
+          <p className="empty-state">Loading matches…</p>
         </section>
       ) : matchError ? (
         <section className="panel status-panel error-panel">
@@ -389,6 +441,7 @@ function App() {
                 ))}
               </select>
             </div>
+            <span className="match-note">Simulated Match</span>
 
             <div className="replay-controls">
               <button type="button" className="primary-btn small" onClick={handlePlayPause} disabled={!events.length}>
@@ -456,8 +509,8 @@ function App() {
           <div className="live-grid">
             <section className="panel compact-panel">
               <div className="panel-header">
-                <span className="panel-kicker">Live statistics</span>
-                <h3>Match state</h3>
+                <span className="panel-kicker">What the numbers say</span>
+                <h3>Match snapshot</h3>
               </div>
 
               {state ? (
@@ -504,14 +557,14 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <p className="empty-state">Loading synthetic state...</p>
+                <p className="empty-state">Loading match snapshot...</p>
               )}
             </section>
 
             <section className="panel compact-panel event-panel">
               <div className="panel-header">
-                <span className="panel-kicker">Event feed</span>
-                <h3>Chronological replay</h3>
+                <span className="panel-kicker">Key moments</span>
+                <h3>Match timeline</h3>
               </div>
 
               <ul className="event-list">
@@ -534,13 +587,13 @@ function App() {
 
           <section className="panel compact-panel case-panel">
             <div className="panel-header">
-              <span className="panel-kicker">Deterministic case detection</span>
-              <h3>Courtroom cases</h3>
+              <span className="panel-kicker">The debate</span>
+              <h3>Key talking points</h3>
             </div>
 
             {cases.length === 0 ? (
               <p className="empty-state">
-                No courtroom cases are eligible at the current replay timestamp. New cases become visible only after the relevant match events are in view.
+                No key moments are available yet. As the replay continues, more talking points will appear.
               </p>
             ) : (
               <div className="case-layout">
@@ -553,7 +606,7 @@ function App() {
                       onClick={() => openCourtroom(caseItem)}
                     >
                       <span className="case-tag">{caseItem.case_type.replace(/_/g, ' ')}</span>
-                      <strong>{caseItem.title}</strong>
+                      <strong>{getCaseDisplayTitle(caseItem, matchData)}</strong>
                       <small>{formatClock(caseItem.detection_timestamp)}</small>
                     </button>
                   ))}
@@ -561,29 +614,30 @@ function App() {
 
                 <div className="case-detail">
                   <div className="case-detail-header">
-                    <span className="case-mode">Deterministic layer</span>
-                    <strong>{selectedCase?.title || 'No case selected'}</strong>
+                    <span className="case-mode">Key talking point</span>
+                    <strong>{getCaseDisplayTitle(selectedCase, matchData) || 'No case selected'}</strong>
                     <small>
-                      Match {selectedCase?.match_id || selectedMatchId} • Detected at{' '}
-                      {selectedCase ? formatClock(selectedCase.detection_timestamp) : '00:00'}
+                      {getMatchHeadline(matchData)} • {selectedCase ? formatClock(selectedCase.detection_timestamp) : '00:00'}
                     </small>
                   </div>
 
                   <div className="case-meta-grid">
                     <div>
                       <span>Question</span>
-                      <strong>{selectedCase?.title || 'N/A'}</strong>
+                      <strong>{getCaseDisplayTitle(selectedCase, matchData) || 'N/A'}</strong>
                     </div>
                     <div>
-                      <span>Trigger</span>
-                      <strong>{selectedCase?.trigger_event_ids?.join(', ') || 'N/A'}</strong>
+                      <span>Turning point</span>
+                      <strong>
+                        {selectedCase?.relevant_windows?.[0]?.label || 'Key moment'}
+                      </strong>
                     </div>
                     <div>
                       <span>Confidence</span>
                       <strong>{selectedCase?.confidence || 'N/A'}</strong>
                     </div>
                     <div>
-                      <span>Relevant window</span>
+                      <span>When It Happened</span>
                       <strong>
                         {selectedCase?.relevant_windows?.map(
                           (windowItem) =>
@@ -601,14 +655,13 @@ function App() {
                           <strong>{item.label}</strong>
                           <span>{item.value}</span>
                           <small>{item.context}</small>
-                          <em>Events: {item.event_ids?.join(', ') || 'N/A'}</em>
                         </li>
                       )) || <li>No evidence available.</li>}
                     </ul>
                   </div>
 
                   <div className="case-section muted">
-                    <h4>Counterevidence</h4>
+                    <h4>The Other Side</h4>
                     <ul>
                       {(selectedCase?.counterevidence || []).map((item) => (
                         <li key={`${selectedCase.case_id}-counter-${item}`}>{item}</li>
@@ -641,7 +694,7 @@ function App() {
             <p className="eyebrow">No case selected</p>
             <h2>No courtroom case is currently available.</h2>
             <p className="empty-state">
-              Select a live match and replay to a moment where deterministic case detection triggers evidence.
+              Pick a live match and follow the replay until a meaningful moment appears.
             </p>
             <button type="button" className="primary-btn" onClick={goToLive}>
               Back to Live Match
@@ -661,16 +714,8 @@ function App() {
       <main className="courtroom-page">
         <div className="courtroom-header compact-header">
           <div>
-            <p className="eyebrow">Deterministic case review</p>
-            <h2>{selectedCase.title}</h2>
-          </div>
-          <div className="header-actions">
-            <button type="button" className="secondary-btn" onClick={goToLive}>
-              Back to Live Match
-            </button>
-            <button type="button" className="secondary-btn" onClick={goToLobby}>
-              Lobby
-            </button>
+            <p className="eyebrow">The Case</p>
+            <h2>{getCaseDisplayTitle(selectedCase, matchData)}</h2>
           </div>
         </div>
 
@@ -700,17 +745,17 @@ function App() {
         <div className="courtroom-grid compact-grid">
           <section className="panel compact-panel">
             <div className="panel-header">
-              <span className="panel-kicker">Case summary</span>
+              <span className="panel-kicker">The Case</span>
               <h3>{caseTypeLabel}</h3>
             </div>
             <ul className="detail-list">
               <li>
                 <span>Question</span>
-                <strong>{selectedCase.title}</strong>
+                <strong>{getCaseDisplayTitle(selectedCase, matchData)}</strong>
               </li>
               <li>
                 <span>Match</span>
-                <strong>{selectedCase.match_id || selectedMatchId}</strong>
+                <strong>{getMatchHeadline(matchData)}</strong>
               </li>
               <li>
                 <span>Detected</span>
@@ -745,14 +790,14 @@ function App() {
 
           <section className="panel compact-panel">
             <div className="panel-header">
-              <span className="panel-kicker">Counterevidence</span>
+              <span className="panel-kicker">The Other Side</span>
               <h3>Context check</h3>
             </div>
             <ul className="argument-list compact-list">
               {counterEvidence.length ? (
                 counterEvidence.map((item) => <li key={`${selectedCase.case_id}-counter-${item}`}>{item}</li>)
               ) : (
-                <li>No counterevidence is available for this case.</li>
+                <li>No alternative view is available yet for this case.</li>
               )}
             </ul>
           </section>
@@ -773,7 +818,7 @@ function App() {
 
           <section className="panel judge-panel compact-panel">
             <div className="panel-header">
-              <span className="panel-kicker">Windowing</span>
+              <span className="panel-kicker">When It Happened</span>
               <h3>Relevant timeline</h3>
             </div>
             <div className="mini-grid">
@@ -792,30 +837,6 @@ function App() {
             </div>
           </section>
 
-          <section className="panel compact-panel agent-panel">
-            <div className="panel-header">
-              <span className="panel-kicker">Future agent slots</span>
-              <h3>Prepared for evidence agents</h3>
-            </div>
-            <div className="agent-grid">
-              <div className="agent-slot">
-                <span>Evidence</span>
-                <strong>Queue ready</strong>
-              </div>
-              <div className="agent-slot">
-                <span>Prosecution</span>
-                <strong>Not yet connected</strong>
-              </div>
-              <div className="agent-slot">
-                <span>Defense</span>
-                <strong>Not yet connected</strong>
-              </div>
-              <div className="agent-slot">
-                <span>Judge</span>
-                <strong>Not yet connected</strong>
-              </div>
-            </div>
-          </section>
         </div>
       </main>
     )

@@ -142,6 +142,20 @@ def _case_id(match_id: str, case_type: str, timestamp: int, team_id: str, index:
     return f"{match_id}-{case_type}-{team_id}-{timestamp}-{index}"
 
 
+def _has_meaningful_window(pre_stats: Dict[str, Any], post_stats: Dict[str, Any], *, min_pre_events: int = 3, min_post_events: int = 3, min_total_actions: int = 6) -> bool:
+    if pre_stats["event_count"] < min_pre_events or post_stats["event_count"] < min_post_events:
+        return False
+    action_total = (
+        pre_stats["pass_attempts"]
+        + pre_stats["pressure_events"]
+        + pre_stats["shots"]
+        + post_stats["pass_attempts"]
+        + post_stats["pressure_events"]
+        + post_stats["shots"]
+    )
+    return action_total >= min_total_actions
+
+
 def _summarize_players(events: Sequence[Dict[str, Any]]) -> List[str]:
     names = []
     for event in events:
@@ -230,7 +244,9 @@ def _detect_substitution_impact(events: Sequence[Dict[str, Any]], *, match_id: s
         pre_stats = _window_summary(ordered, team_id, pre_start, ts)
         post_stats = _window_summary(ordered, team_id, ts, post_end)
 
-        if pre_stats["event_count"] < 2 or post_stats["event_count"] < 3:
+        if pre_stats["event_count"] < 3 or post_stats["event_count"] < 4:
+            continue
+        if not _has_meaningful_window(pre_stats, post_stats, min_pre_events=3, min_post_events=4, min_total_actions=7):
             continue
 
         attack_delta = post_stats["attacking_activity"] - pre_stats["attacking_activity"]
@@ -330,30 +346,32 @@ def _detect_momentum_shift(events: Sequence[Dict[str, Any]], *, match_id: str) -
         pre_stats = _window_summary(ordered, team_id, pre_start, ts)
         post_stats = _window_summary(ordered, team_id, ts, post_end)
 
-        if post_stats["event_count"] < 2:
+        if post_stats["event_count"] < 3 or pre_stats["event_count"] < 1:
+            continue
+        if not _has_meaningful_window(pre_stats, post_stats, min_pre_events=1, min_post_events=3, min_total_actions=3):
             continue
 
         attack_delta = post_stats["attacking_activity"] - pre_stats["attacking_activity"]
         pressure_delta = post_stats["pressure_events"] - pre_stats["pressure_events"]
         if not (
-            (attack_delta >= 2 and pressure_delta >= 1)
-            or (post_stats["attacking_activity"] >= 4 and post_stats["pressure_events"] >= 1)
-            or (post_stats["shots"] >= 1 and post_stats["pressure_events"] >= 1)
+            (attack_delta >= 4 and pressure_delta >= 1)
+            or (post_stats["attacking_activity"] >= 6 and post_stats["pressure_events"] >= 2)
+            or (post_stats["shots"] >= 1 and post_stats["pressure_events"] >= 2)
         ):
             continue
 
         evidence = [
             {
-                "label": "Before trigger",
+                "label": "Before the turning point",
                 "value": f"{pre_stats['attacking_activity']} attacking actions and {pre_stats['pressure_events']} pressing events",
                 "event_ids": pre_stats["event_ids"],
                 "context": "The team’s pattern leading into the turning point.",
             },
             {
-                "label": "After trigger",
+                "label": "After the turning point",
                 "value": f"{post_stats['attacking_activity']} attacking actions and {post_stats['pressure_events']} pressing events",
                 "event_ids": post_stats["event_ids"],
-                "context": "The immediate burst after the trigger event.",
+                "context": "The immediate burst after the turning point.",
             },
         ]
         case = _build_case(
@@ -369,8 +387,8 @@ def _detect_momentum_shift(events: Sequence[Dict[str, Any]], *, match_id: str) -
                 "This should not be treated as proof that the trigger caused the match swing on its own.",
             ],
             relevant_windows=[
-                {"label": "Before trigger", "start": pre_start, "end": ts},
-                {"label": "After trigger", "start": ts, "end": post_end},
+                {"label": "Before the turning point", "start": pre_start, "end": ts},
+                {"label": "After the turning point", "start": ts, "end": post_end},
             ],
             limitations=[
                 "The evidence is a short-window comparison within the available event stream.",
@@ -414,11 +432,13 @@ def _detect_missed_opportunity(events: Sequence[Dict[str, Any]], *, match_id: st
 
         pre_start = max(0, ts - 90)
         pre_end = max(0, ts - 1)
+        if ts < 30:
+            continue
         post_start = ts + 1
         post_end = ts + 90
         pre_stats = _window_summary(ordered, team_id, pre_start, pre_end)
         post_stats = _window_summary(ordered, team_id, post_start, post_end)
-        if pre_stats["pass_attempts"] < 1 and pre_stats["pressure_events"] < 1:
+        if pre_stats["event_count"] < 3 or pre_stats["pass_attempts"] + pre_stats["pressure_events"] < 2:
             continue
         if post_stats["shots"] > 0 or post_stats["goals"] > 0:
             continue
