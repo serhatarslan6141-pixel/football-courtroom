@@ -4,6 +4,7 @@ export const initialSession = {
   catalogStatus: 'loading',
   catalogVersion: 0,
   selectedMatchId: '',
+  fixtureConfirmed: false,
   matchVersion: 0,
   matchData: null,
   events: [],
@@ -20,7 +21,6 @@ export const initialSession = {
   evidenceTimestamp: null,
   caseNotifications: [],
   seenCaseIds: [],
-  statsOpen: true,
   error: '',
 }
 
@@ -36,7 +36,6 @@ function selectMatch(session, id) {
     replayVersion: session.replayVersion + 1,
     dataStatus: id ? 'loading' : 'idle',
     replaySpeed: session.replaySpeed,
-    statsOpen: session.statsOpen,
   }
 }
 
@@ -73,6 +72,14 @@ export function sessionReducer(session, action) {
     case 'SELECT_MATCH':
       if (action.id === session.selectedMatchId) return session
       return selectMatch(session, action.id)
+    case 'CONFIRM_FIXTURE':
+      if (!session.snapshot || session.error || session.dataStatus !== 'ready') return session
+      return { ...session, fixtureConfirmed: true, screen: 'match' }
+    case 'SHOW_FIXTURES':
+      return {
+        ...session, fixtureConfirmed: false, isPlaying: false,
+        pendingTimestamp: null, replayVersion: session.replayVersion + 1,
+      }
     case 'MATCH_LOADED': {
       if (action.matchVersion !== session.matchVersion) return session
       const events = [...action.events].sort((a, b) => a.timestamp - b.timestamp || a.index - b.index)
@@ -114,7 +121,7 @@ export function sessionReducer(session, action) {
     }
     case 'TOGGLE_PLAY': {
       if (session.screen !== 'match' || !session.snapshot || session.error) return session
-      if (!session.isPlaying && session.replayTimestamp >= (session.events.at(-1)?.timestamp ?? 0)) {
+      if (!session.isPlaying && session.pendingTimestamp === null && session.replayTimestamp >= (session.events.at(-1)?.timestamp ?? 0)) {
         return { ...requestReplay(session, 0, true), isPlaying: true }
       }
       return { ...session, isPlaying: !session.isPlaying }
@@ -122,6 +129,20 @@ export function sessionReducer(session, action) {
     case 'RESET':
       if (session.screen !== 'match') return session
       return { ...requestReplay(session, 0, true), isPlaying: false }
+    case 'SEEK': {
+      if (session.screen !== 'match' || !session.snapshot || !Number.isFinite(action.timestamp)) return session
+      const timestamp = Math.max(0, Math.min(Math.round(action.timestamp), session.events.at(-1)?.timestamp ?? 0))
+      return { ...requestReplay(session, timestamp), isPlaying: false }
+    }
+    case 'SKIP': {
+      if (session.screen !== 'match' || !session.snapshot) return session
+      const position = session.pendingTimestamp ?? session.replayTimestamp
+      const timestamps = [...new Set(session.events.map((event) => event.timestamp))]
+      const timestamp = action.direction < 0
+        ? timestamps.findLast((time) => time < position) ?? 0
+        : timestamps.find((time) => time > position) ?? position
+      return { ...requestReplay(session, timestamp), isPlaying: false }
+    }
     case 'SET_SPEED':
       return [0.5, 1, 2].includes(action.speed) ? { ...session, replaySpeed: action.speed } : session
     case 'NAVIGATE':
@@ -157,8 +178,6 @@ export function sessionReducer(session, action) {
       }
     case 'EXPIRE_NOTIFICATIONS':
       return { ...session, caseNotifications: session.caseNotifications.filter((item) => item.expiresAt > action.now) }
-    case 'TOGGLE_STATS':
-      return { ...session, statsOpen: !session.statsOpen }
     default:
       return session
   }

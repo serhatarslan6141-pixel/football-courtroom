@@ -90,6 +90,16 @@ VITE_API_BASE_URL=https://api.example.com npm run build
 
 Production hosting must either forward `/api` to FastAPI or supply that environment variable at build time. A separate backend origin also needs the frontend origin allowed in FastAPI CORS.
 
+### Match broadcast
+
+The Match scene starts with a fixture picker. Club colors and abbreviations come from each fixture's backend metadata. Choose a tile and enter its replay; Change fixture returns to the picker and pauses playback.
+
+The SVG pitch projects recorded 0–100 event coordinates into a fixed home-left-to-right / away-right-to-left view. Passes and shots receive paths only when both endpoints are recorded. A single location is rendered as a point; missing positions are never filled with invented player tracking. The latest observed event supplies the pitch overlay and caption.
+
+The timeline supports mouse/touch dragging and native range-keyboard navigation. It can seek anywhere between kickoff and full time, pausing playback. Next/previous skip to distinct event timestamps. All displayed statistics, pitch events, and cases continue to use the last committed snapshot while a seek loads. Old requests are canceled and version-checked. Goals, substitutions, cards, and courtroom markers appear only once observed; case markers use eligibility time rather than trigger time. Rewinding removes future markers and cases.
+
+The secondary rail has Stats, Events, and Cases tabs. History is paginated in groups of 20 with bounded internal scrolling. Case alerts open the existing Courtroom scene, preserving the replay return position. Reduced-motion preferences disable goal and alert animations.
+
 ## Start and stop commands
 
 - Start both services:

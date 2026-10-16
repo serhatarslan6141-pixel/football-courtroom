@@ -119,4 +119,39 @@ describe('match session', () => {
     expect(session.caseNotifications).toEqual([])
     expect(session.seenCaseIds).toContain(caseItem.case_id)
   })
+
+  it('bounds seeking, pauses it, and rejects stale results from an earlier drag position', () => {
+    let session = { ...ready(10), screen: 'match', isPlaying: true }
+    session = reduce(session, { type: 'SEEK', timestamp: 5 })
+    const obsolete = session.replayVersion
+    expect(session.isPlaying).toBe(false)
+    session = reduce(session, { type: 'SEEK', timestamp: 15 })
+    session = reduce(session, { type: 'SET_SPEED', speed: 2 })
+    expect(session.pendingTimestamp).toBe(15)
+    expect(session.replaySpeed).toBe(2)
+    expect(reduce(session, {
+      type: 'SNAPSHOT_LOADED', matchVersion: session.matchVersion, replayVersion: obsolete,
+      snapshot: snapshot(5), now: 1000,
+    })).toBe(session)
+    expect(reduce(session, { type: 'SEEK', timestamp: -5 }).pendingTimestamp).toBe(0)
+    expect(reduce(session, { type: 'SEEK', timestamp: 999 }).pendingTimestamp).toBe(20)
+    expect(reduce(session, { type: 'SEEK', timestamp: NaN })).toBe(session)
+  })
+
+  it('keeps a requested seek when Play is pressed while leaving full time', () => {
+    let session = { ...ready(20), screen: 'match' }
+    session = reduce(session, { type: 'SEEK', timestamp: 5 })
+    session = reduce(session, { type: 'TOGGLE_PLAY' })
+    expect(session.pendingTimestamp).toBe(5)
+    expect(session.isPlaying).toBe(true)
+  })
+
+  it('skips distinct event times and never moves the main replay from the courtroom', () => {
+    let session = { ...ready(10), screen: 'match' }
+    expect(reduce(session, { type: 'SKIP', direction: 1 }).pendingTimestamp).toBe(20)
+    expect(reduce(session, { type: 'SKIP', direction: -1 }).pendingTimestamp).toBe(0)
+    session = reduce(session, { type: 'OPEN_COURTROOM', caseId: caseItem.case_id })
+    expect(reduce(session, { type: 'SEEK', timestamp: 20 })).toBe(session)
+    expect(reduce(session, { type: 'SKIP', direction: 1 })).toBe(session)
+  })
 })

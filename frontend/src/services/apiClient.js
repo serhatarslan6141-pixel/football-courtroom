@@ -20,7 +20,14 @@ export function createApiClient({
   const matchPath = (id) => `/api/matches/${encodeURIComponent(id)}`
 
   return {
-    listMatches: (signal) => get('/api/matches', signal),
+    async listMatches(signal) {
+      const catalog = await get('/api/matches', signal)
+      // The catalog contains names; fixture tiles also need the actual club colors.
+      const matches = await Promise.all((catalog.matches || []).map(async (match) => ({
+        ...match, ...await get(matchPath(match.match_id), signal),
+      })))
+      return { ...catalog, matches }
+    },
     async loadMatch(id, signal) {
       const [matchData, payload] = await Promise.all([
         get(matchPath(id), signal),

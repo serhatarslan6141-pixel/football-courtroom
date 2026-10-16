@@ -4,6 +4,20 @@ import { deferred, snapshot } from '../test/fixtures.js'
 import { formatPassRate, formatPercent } from '../domain/formatters.js'
 
 describe('API client', () => {
+  it('keeps every fixture and loads its actual team colors for the picker', async () => {
+    const matches = ['a', 'b', 'c'].map((match_id) => ({ match_id }))
+    const fetchImpl = vi.fn(async (url) => ({
+      ok: true,
+      json: async () => url === '/api/matches' ? { matches, count: 3 } : {
+        match_id: url.split('/').at(-1), teams: [{ team_id: 'home', primary_color: '#123456' }],
+      },
+    }))
+    const catalog = await createApiClient({ baseUrl: '', fetchImpl }).listMatches()
+    expect(catalog.matches.map((match) => match.match_id)).toEqual(['a', 'b', 'c'])
+    expect(catalog.matches.every((match) => match.teams[0].primary_color === '#123456')).toBe(true)
+    expect(fetchImpl).toHaveBeenCalledTimes(4)
+  })
+
   it('requests both snapshot resources at exactly the same timestamp and waits for both', async () => {
     const cases = deferred()
     const fetchImpl = vi.fn((url) => url.includes('/cases') ? cases.promise : Promise.resolve({
