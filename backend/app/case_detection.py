@@ -93,7 +93,8 @@ def _window_summary(events: Sequence[Dict[str, Any]], team_id: str, start_ts: in
         event_ids.append(event.get("event_id"))
         if event.get("possession_id") is not None:
             sequences.add(event["possession_id"])
-        if event_type in {"pass", "cross", "carry", "dribble"} and metadata.get("progressive"):
+        if (event_type in {"pass", "cross", "carry", "dribble"} and metadata.get("progressive")
+                and (event_type in {"carry", "dribble"} or metadata.get("outcome") == "complete")):
             progressive_actions += 1
         start, end = metadata.get("start"), metadata.get("end")
         if start and end and event_type in {"pass", "cross", "carry", "dribble"}:
@@ -572,9 +573,16 @@ def detect_cases(
     cases.extend(_detect_missed_opportunity(ordered, match_id=resolved_match_id))
 
     deduped: Dict[str, Dict[str, Any]] = {}
+    half_boundaries = [event["timestamp"] for event in ordered
+                       if event.get("event_type") == "whistle"
+                       and event.get("metadata", {}).get("reason") == "half_time"]
+    # Preserve legacy payloads without period/whistle metadata.
+    if not half_boundaries and not any(event.get("schema_version") == 2 for event in ordered):
+        half_boundaries = [2700]
     for case in cases:
         # A half-time reset is not evidence for a tactical swing across the break.
-        crosses_half = any(window["start"] < 2700 < window["end"] for window in case["relevant_windows"])
+        crosses_half = any(window["start"] < boundary < window["end"]
+                           for window in case["relevant_windows"] for boundary in half_boundaries)
         if case["available_timestamp"] <= observed_through and not crosses_half:
             deduped[case["case_id"]] = case
     return sorted(deduped.values(), key=lambda item: (item["detection_timestamp"], item["case_type"]))

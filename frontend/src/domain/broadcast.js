@@ -45,9 +45,12 @@ export function eventGeometry(event) {
     'carry',
     'dribble',
     'clearance',
+    'miscontrol',
+    'deflection',
   ].includes(event.event_type)
   return {
-    point: location || start || end,
+    point:
+      metadata.movement === 'reset' ? end || start : location || start || end,
     path: canDrawPath && start && end ? { start, end } : null,
   }
 }

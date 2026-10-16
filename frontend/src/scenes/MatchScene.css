@@ -1269,3 +1269,43 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Recorded rules cues stay within the broadcast, without extra panels. */
+.pitch-rules-cue {
+  position: absolute;
+  top: 42px;
+  left: 18px;
+  max-width: calc(100% - 36px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #081c16ed;
+  border-left: 2px solid #d3b66c;
+  color: #e7e9dc;
+  font-size: 11px;
+  pointer-events: none;
+}
+.pitch-rules-cue > span:last-child:not(.disciplinary-card) {
+  color: #b8c5b9;
+}
+.disciplinary-card {
+  display: inline-block;
+  width: 9px;
+  height: 13px;
+  background: #e7c974;
+  transform: rotate(-8deg);
+}
+.disciplinary-card.is-red {
+  background: #de665d;
+}
+@media (max-width: 600px) {
+  .pitch-rules-cue {
+    top: 30px;
+    left: 8px;
+    font-size: 8px;
+    padding: 4px 6px;
+    gap: 5px;
+  }
+}

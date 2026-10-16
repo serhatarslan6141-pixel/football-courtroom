@@ -8,6 +8,7 @@ const MOTION_TYPES = new Set([
   'shot',
   'clearance',
   'miscontrol',
+  'deflection',
 ])
 const CUE_TYPES = new Set([
   'pressure_event',
@@ -18,6 +19,8 @@ const CUE_TYPES = new Set([
   'foul',
   'save',
   'goal',
+  'card',
+  'offside',
 ])
 
 function inProgressEvent(source) {
@@ -32,6 +35,8 @@ function inProgressEvent(source) {
     attack_direction,
     phase,
     ball_in_play,
+    restart_type,
+    restart_status,
   } = source.metadata || {}
   return {
     event_id: source.event_id,
@@ -53,6 +58,8 @@ function inProgressEvent(source) {
       attack_direction,
       phase,
       ball_in_play,
+      restart_type,
+      restart_status,
     },
   }
 }
@@ -121,8 +128,25 @@ export function replayVisual(events, timestamp, reducedMotion = false) {
     ) ||
     latestCue ||
     null
+  const knownRestart = recent.findLast((item) =>
+    ['restart', 'kickoff'].includes(item.event_type),
+  )
+  const restart =
+    event?.metadata?.ball_in_play === false &&
+    event?.metadata?.restart_type &&
+    knownRestart?.possession_id === event?.possession_id
+      ? knownRestart
+      : null
+  const discipline =
+    recent.findLast(
+      (item) =>
+        ['card', 'offside', 'foul'].includes(item.event_type) &&
+        timestamp - item.timestamp <= 6,
+    ) || null
   return {
     event,
+    restart,
+    discipline,
     ball: ball || geometry.point,
     path: moving ? partialPath : geometry.path,
     trail,

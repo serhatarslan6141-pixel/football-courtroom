@@ -19,6 +19,12 @@ export default function MatchTimeline({
   disabled,
 }) {
   const markers = timelineMarkers(events, cases, timestamp)
+  const halfTime =
+    events.find(
+      (event) =>
+        event.event_type === 'whistle' &&
+        event.metadata?.reason === 'half_time',
+    )?.timestamp ?? duration / 2
   const target = pendingTimestamp ?? timestamp
   const percent = (value) =>
     `${Math.max(0, Math.min(100, (value / (duration || 1)) * 100))}%`
@@ -72,7 +78,7 @@ export default function MatchTimeline({
       <div className="timeline-ticks">
         <span>KO</span>
         <span>{formatClock(duration / 4)}</span>
-        <span>HT · {formatClock(duration / 2)}</span>
+        <span>HT · {formatClock(halfTime)}</span>
         <span>{formatClock((duration * 3) / 4)}</span>
         <span>FT</span>
       </div>

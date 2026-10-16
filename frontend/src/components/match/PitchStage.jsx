@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { clubFor, eventGeometry } from '../../domain/broadcast.js'
+import { clubFor, eventGeometry, pitchPoint } from '../../domain/broadcast.js'
 import { replayVisual } from '../../domain/replayVisual.js'
 import { useReducedMotion } from '../../hooks/useReducedMotion.js'
 import { normalizeTeamKey } from '../../domain/formatters.js'
@@ -55,6 +55,20 @@ export default function PitchStage({
   const cue = visual?.cue || current
   const cueType = cue?.event_type
   const cuePoint = eventGeometry(cue).point
+  const restart =
+    visual?.restart || (['restart', 'kickoff'].includes(type) ? current : null)
+  const discipline =
+    visual?.discipline ||
+    (['card', 'offside', 'foul'].includes(type) ? current : null)
+  const offside =
+    discipline?.event_type === 'offside'
+      ? discipline.metadata?.offside_context
+      : null
+  const offsideLine = Number.isFinite(offside?.offside_line_x)
+    ? offside.offside_line_x * 1.05
+    : null
+  const restartLabel = restart?.metadata?.restart_type?.replace(/_/g, ' ')
+  const setup = restart?.metadata?.setup_positions || []
   const period = current?.period || 1
   const phase = current?.metadata?.phase?.replace(/_/g, ' ')
   const goalAge = Math.max(0, timestamp - (cue?.timestamp ?? timestamp))
@@ -76,7 +90,7 @@ export default function PitchStage({
         viewBox="-5 -5 115 78"
         preserveAspectRatio="none"
         role="img"
-        aria-label={`Football pitch${event ? `: ${type.replace(/_/g, ' ')}` : ''}`}
+        aria-label={`Football pitch${current ? `: ${type.replace(/_/g, ' ')}` : ''}`}
       >
         <defs>
           <linearGradient id={`${id}-grass`} x2="0" y2="1">
@@ -145,6 +159,81 @@ export default function PitchStage({
             fill={`url(#${id}-net)`}
           />
         </g>
+        {offsideLine != null ? (
+          <g
+            data-testid="offside-context"
+            aria-label="Offside positions at pass release"
+          >
+            <line
+              x1={offsideLine}
+              x2={offsideLine}
+              y1="0"
+              y2="68"
+              stroke="#e7c974"
+              strokeWidth=".35"
+              strokeDasharray="1 1"
+            />
+            {pitchPoint(offside.receiver_position) ? (
+              <circle
+                cx={pitchPoint(offside.receiver_position).x}
+                cy={pitchPoint(offside.receiver_position).y}
+                r="1.6"
+                fill="none"
+                stroke="#e7c974"
+                strokeWidth=".4"
+              />
+            ) : null}
+            <text
+              x="52.5"
+              y="65"
+              textAnchor="middle"
+              fontSize="1.5"
+              fill="#e7c974"
+            >
+              AT PASS RELEASE · SIMULATED POSITIONS
+            </text>
+          </g>
+        ) : null}
+        {restart ? (
+          <g data-testid="restart-setup" aria-label={`${restartLabel} setup`}>
+            {setup
+              .filter(
+                (player) =>
+                  player.player_id === restart.player_id ||
+                  (restart.metadata.restart_type === 'penalty' &&
+                    player.role === 'GK' &&
+                    player.team_id !== restart.team_id),
+              )
+              .map((player) => {
+                const location = pitchPoint(player)
+                return location ? (
+                  <g
+                    key={player.player_id}
+                    transform={`translate(${location.x} ${location.y})`}
+                  >
+                    <circle
+                      r="2.1"
+                      fill="none"
+                      stroke={clubFor(match, player.team_id).color}
+                      strokeWidth=".35"
+                      strokeDasharray=".6 .6"
+                    />
+                    <text
+                      y="-3"
+                      x={location.x > 90 ? -2 : 2}
+                      textAnchor={location.x > 90 ? 'end' : 'start'}
+                      fontSize="1.5"
+                      fill="#eff0db"
+                    >
+                      {player.player_id === restart.player_id
+                        ? restart.metadata.player_name
+                        : 'GK · goal line'}
+                    </text>
+                  </g>
+                ) : null
+              })}
+          </g>
+        ) : null}
         <g className="possession-trail" aria-label="Recent possession sequence">
           {visual?.trail
             .filter((item) => item.event_id !== current?.event_id)
@@ -283,6 +372,33 @@ export default function PitchStage({
           ) : null}
         </g>
       </svg>
+      {restartLabel || discipline ? (
+        <div className="pitch-rules-cue" role="status" aria-live="off">
+          {discipline?.event_type === 'card' ? (
+            <span
+              className={`disciplinary-card ${discipline.metadata?.card_type === 'red' ? 'is-red' : ''}`}
+              aria-label={`${discipline.metadata?.card_type} card`}
+            />
+          ) : null}
+          <strong>
+            {restartLabel
+              ? `${restartLabel.replace(/^./, (c) => c.toUpperCase())} — ${clubFor(match, restart.team_id).name}`
+              : discipline.event_type === 'card'
+                ? `${discipline.metadata?.card_type === 'red' ? 'SENT OFF' : 'YELLOW CARD'} · ${discipline.metadata?.player_name}`
+                : discipline.event_type === 'offside'
+                  ? `Offside · ${discipline.metadata?.player_name}`
+                  : `Foul · ${discipline.metadata?.player_name}`}
+          </strong>
+          {restartLabel && discipline?.event_type === 'card' ? (
+            <span>
+              {discipline.metadata?.player_name}
+              {discipline.metadata?.card_type === 'red'
+                ? ' · sent off'
+                : ' · booked'}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {!point && event ? (
         <span className="pitch-location-note">
           Location not recorded for this event

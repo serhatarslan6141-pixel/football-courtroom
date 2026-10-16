@@ -15,6 +15,7 @@ const actionVerbs = {
   clearance: 'clears upfield',
   pressure_event: 'presses the ball carrier',
   miscontrol: 'chases a loose touch',
+  deflection: 'deflects the ball',
 }
 
 export default function EventCaption({ event, match, timestamp }) {
@@ -33,7 +34,9 @@ export default function EventCaption({ event, match, timestamp }) {
         <p>
           {event?.in_progress
             ? event.metadata?.ball_in_play === false
-              ? 'Play is stopped. Waiting for the restart.'
+              ? event.metadata?.restart_type
+                ? `${event.metadata.restart_type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())} — ${club.name}. ${event.metadata?.player_name || 'The taker'} prepares the restart.`
+                : 'Play is stopped. Waiting for the restart.'
               : `${event.metadata?.player_name || club.name} ${actionVerbs[event.event_type] || event.event_type.replace(/_/g, ' ')}.`
             : event
               ? describeEvent(event, match)

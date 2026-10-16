@@ -14,7 +14,9 @@ Football Courtroom is a mock, AI-storytelling football experience where match mo
 - [backend/app/main.py](backend/app/main.py): FastAPI routes and CORS configuration
 - [backend/app/synthetic_match.py](backend/app/synthetic_match.py): fixture models and event-derived statistics
 - [backend/app/simulation.py](backend/app/simulation.py): coherent possession, role, ball and timing simulation
-- [docs/simulation.md](docs/simulation.md): v2 event contract, calibration assumptions and limitations
+- [backend/app/football_rules.py](backend/app/football_rules.py): supported boundary, foul, discipline and offside rules
+- [backend/app/football_decisions.py](backend/app/football_decisions.py): tunable shooting geometry and passing-lane decisions
+- [docs/simulation.md](docs/simulation.md): v2 event contract, supported rules and explicit model limitations
 - [frontend/src/App.jsx](frontend/src/App.jsx): scene navigation and session provider
 - [frontend/src/scenes](frontend/src/scenes): welcome, match replay, and courtroom presentation
 - [frontend/src/session](frontend/src/session): shared context, reducer, replay loading, and cancellation
@@ -96,7 +98,7 @@ Production hosting must either forward `/api` to FastAPI or supply that environm
 
 The Match scene starts with a fixture picker. Club colors and abbreviations come from each fixture's backend metadata. Choose a tile and enter its replay; Change fixture returns to the picker and pauses playback.
 
-The SVG pitch projects recorded 0–100 ball coordinates in fixed stadium space, reversing attacking directions at half time. Passes, carries, shots and clearances interpolate over recorded durations, with recent possession trails and distinct turnover/pressure cues. In-flight results stay hidden until completion. Missing positions are never filled with invented player tracking. See [the simulation notes](docs/simulation.md) for timing, statistics, eligibility and model assumptions.
+The SVG pitch projects recorded 0–100 ball coordinates in fixed stadium space, reversing attacking directions at half time. Passes, carries, shots and clearances interpolate over recorded durations, with recent possession trails and distinct turnover/pressure cues. Restart setup stays at the awarded location during its pause, with compact throw-in/corner/free-kick/goal-kick/penalty labels. Recorded card and offside context appears only after the decision. In-flight results stay hidden until completion. Missing positions are never filled with invented player tracking. See [the simulation notes](docs/simulation.md) for timing, statistics, eligibility and model assumptions.
 
 The timeline supports mouse/touch dragging and native range-keyboard navigation. It can seek anywhere between kickoff and full time, pausing playback. Next/previous skip to distinct event timestamps. All displayed statistics, pitch events, and cases continue to use the last committed snapshot while a seek loads. Old requests are canceled and version-checked. Goals, substitutions, cards, and courtroom markers appear only once observed; case markers use eligibility time rather than trigger time. Rewinding removes future markers and cases.
 
