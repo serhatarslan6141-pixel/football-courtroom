@@ -60,8 +60,8 @@ def test_valid_team_and_player_references():
 def test_pass_statistics_match_event_data():
     match = generate_match(9)
     state = calculate_match_state(match.events)
-    pass_attempts = sum(1 for event in match.events if event["event_type"] == "pass")
-    completed_passes = sum(1 for event in match.events if event["event_type"] == "pass" and event["metadata"].get("outcome") == "complete")
+    pass_attempts = sum(1 for event in match.events if event["event_type"] in {"pass", "cross"})
+    completed_passes = sum(1 for event in match.events if event["event_type"] in {"pass", "cross"} and event["metadata"].get("outcome") == "complete")
     assert pass_attempts == sum(state["pass_attempts"].values())
     assert completed_passes == sum(state["pass_completions"].values())
 
@@ -142,8 +142,8 @@ def test_match_state_at_replay_timestamps_excludes_future_events():
         "away": sum(1 for event in observed if event["event_type"] == "goal" and event["team_id"] == "away"),
     }
     assert state["pass_attempts"] == {
-        "home": sum(1 for event in observed if event["event_type"] == "pass" and event["team_id"] == "home"),
-        "away": sum(1 for event in observed if event["event_type"] == "pass" and event["team_id"] == "away"),
+        "home": sum(1 for event in observed if event["event_type"] in {"pass", "cross"} and event["team_id"] == "home"),
+        "away": sum(1 for event in observed if event["event_type"] in {"pass", "cross"} and event["team_id"] == "away"),
     }
     assert state["shots"] == {
         "home": sum(1 for event in observed if event["event_type"] == "shot" and event["team_id"] == "home"),

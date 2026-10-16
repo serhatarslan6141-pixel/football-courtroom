@@ -1,5 +1,6 @@
 import { useMatchSession } from '../session/useMatchSession.js'
 import { eligibleCases } from '../domain/broadcast.js'
+import { replayVisual } from '../domain/replayVisual.js'
 import FixturePicker from '../components/match/FixturePicker.jsx'
 import Scorebug from '../components/match/Scorebug.jsx'
 import PitchStage from '../components/match/PitchStage.jsx'
@@ -58,7 +59,7 @@ export default function MatchScene() {
       availableCases.find((candidate) => candidate.case_id === item.case_id),
     )
     .find(Boolean)
-  const currentEvent = liveEvents.at(-1)
+  const currentEvent = replayVisual(events, replayTimestamp).event
   const duration = events.at(-1)?.timestamp ?? 5400
 
   return (
@@ -99,7 +100,12 @@ export default function MatchScene() {
             />
             <span className="broadcast-watermark">FC / BROADCAST</span>
           </div>
-          <PitchStage event={currentEvent} match={matchData}>
+          <PitchStage
+            event={currentEvent}
+            events={events}
+            timestamp={replayTimestamp}
+            match={matchData}
+          >
             <CaseAlert
               caseItem={notification}
               match={matchData}

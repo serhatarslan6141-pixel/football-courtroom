@@ -120,11 +120,21 @@ export function sessionReducer(session, action) {
       return nextEvent ? requestReplay(session, nextEvent.timestamp) : { ...session, isPlaying: false }
     }
     case 'TOGGLE_PLAY': {
+      // Playback uses a continuous clock; event results commit at validity boundaries.
       if (session.screen !== 'match' || !session.snapshot || session.error) return session
       if (!session.isPlaying && session.pendingTimestamp === null && session.replayTimestamp >= (session.events.at(-1)?.timestamp ?? 0)) {
         return { ...requestReplay(session, 0, true), isPlaying: true }
       }
       return { ...session, isPlaying: !session.isPlaying }
+    }
+    case 'ADVANCE_CLOCK': {
+      if (!session.isPlaying || session.screen !== 'match' || session.pendingTimestamp !== null || !session.snapshot) return session
+      if (!Number.isFinite(action.elapsed) || action.elapsed <= 0) return session
+      const next = session.replayTimestamp + Math.min(action.elapsed, .25) * session.replaySpeed
+      const boundary = session.snapshot.state.next_update_timestamp
+        ?? session.events.find((event) => event.timestamp > session.replayTimestamp)?.timestamp
+      if (boundary != null && next >= boundary) return requestReplay(session, boundary)
+      return { ...session, replayTimestamp: next }
     }
     case 'RESET':
       if (session.screen !== 'match') return session

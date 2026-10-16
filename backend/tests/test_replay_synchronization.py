@@ -28,7 +28,7 @@ def test_cases_wait_for_complete_windows_and_keep_their_identity(seed):
 
 def test_event_count_means_chronological_count_for_both_endpoints():
     match = generate_match(202)
-    assert any(a["index"] > b["index"] for a, b in zip(match.events, match.events[1:]))
+    # Generation order is now chronological; count semantics still apply.
     client = TestClient(app)
     for count in (0, 1, 40, 150, len(match.events)):
         selected = select_replay_events(match.events, through_event=count)

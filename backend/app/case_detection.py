@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .synthetic_match import _normalize_team_key, select_replay_events
+from .synthetic_match import CASE_OBSERVATION_SECONDS, _normalize_team_key, select_replay_events
 
 CASE_TYPES = (
     "substitution_impact",
@@ -83,35 +83,59 @@ def _window_summary(events: Sequence[Dict[str, Any]], team_id: str, start_ts: in
     possession_seconds = 0.0
     attack_score = 0
     event_ids = []
+    threats = 0
+    sequences = set()
+    progressive_actions = 0
 
     for event in window_events:
         event_type = event.get("event_type")
         metadata = event.get("metadata") or {}
         event_ids.append(event.get("event_id"))
-        if event_type == "pass":
+        if event.get("possession_id") is not None:
+            sequences.add(event["possession_id"])
+        if event_type in {"pass", "cross", "carry", "dribble"} and metadata.get("progressive"):
+            progressive_actions += 1
+        start, end = metadata.get("start"), metadata.get("end")
+        if start and end and event_type in {"pass", "cross", "carry", "dribble"}:
+            direction = metadata.get("attack_direction", 1 if team_id == "home" else -1)
+            before = start["x"] if direction == 1 else 100 - start["x"]
+            after = end["x"] if direction == 1 else 100 - end["x"]
+            if before < 78 <= after and (event_type in {"carry", "dribble"} or metadata.get("outcome") == "complete"):
+                threats += 1
+        if event_type in {"pass", "cross"}:
             pass_attempts += 1
             if str(metadata.get("outcome") or "").lower() == "complete":
                 pass_completions += 1
             attack_score += 1
         elif event_type == "shot":
+            threats += 1
             shots += 1
             attack_score += 2
             if bool(metadata.get("on_target")):
                 shots_on_target += 1
         elif event_type == "pressure_event":
             pressure_events += 1
-            attack_score += 2
-            possession_seconds += float(metadata.get("possession_seconds", 0.0) or 0.0)
+            # Pressing is a defensive action in v2; it is not an attacking entry.
+            if event.get("schema_version") != 2:
+                attack_score += 2
         elif event_type == "goal":
+            threats += 1
             goals += 1
             attack_score += 3
         elif event_type == "foul":
             fouls += 1
         elif event_type == "turnover":
             attack_score -= 1
+        elif event_type in {"carry", "dribble"} and metadata.get("progressive"):
+            attack_score += 1
 
-        possession_seconds += float(metadata.get("possession_seconds", 0.0) or 0.0)
+        if event.get("schema_version") != 2:
+            possession_seconds += float(metadata.get("possession_seconds", 0.0) or 0.0)
 
+    possession_seconds += sum(float((event.get("metadata") or {}).get("possession_seconds") or 0)
+                              for event in events if event.get("schema_version") == 2
+                              and event.get("possession_team_id") == team_id
+                              and start_ts <= event["timestamp"] <= end_ts)
     pass_completion = None if pass_attempts == 0 else round(pass_completions / pass_attempts, 4)
     return {
         "team_id": team_id,
@@ -127,6 +151,9 @@ def _window_summary(events: Sequence[Dict[str, Any]], team_id: str, start_ts: in
         "fouls": fouls,
         "possession_seconds": possession_seconds,
         "attacking_activity": attack_score,
+        "threats": threats,
+        "sequence_count": len(sequences),
+        "progressive_actions": progressive_actions,
     }
 
 
@@ -240,9 +267,17 @@ def _detect_substitution_impact(events: Sequence[Dict[str, Any]], *, match_id: s
         last_seen[team_id] = ts
 
         pre_start = max(0, ts - 180)
-        post_end = ts + 210
+        post_end = ts + CASE_OBSERVATION_SECONDS["substitution"]
         pre_stats = _window_summary(ordered, team_id, pre_start, ts)
         post_stats = _window_summary(ordered, team_id, ts, post_end)
+
+        if event.get("schema_version") == 2:
+            incoming = (event.get("metadata") or {}).get("player_in")
+            involved = any(item.get("player_id") == incoming and item["timestamp"] > ts
+                           for item in _window_events(ordered, team_id, ts, post_end))
+            # Require attacking threat, improvement per unit time, and participation.
+            if not involved or post_stats["threats"] < 2 or post_stats["threats"] / 3.5 <= pre_stats["threats"] / 3 + .3:
+                continue
 
         if pre_stats["event_count"] < 3 or post_stats["event_count"] < 4:
             continue
@@ -272,7 +307,7 @@ def _detect_substitution_impact(events: Sequence[Dict[str, Any]], *, match_id: s
             },
             {
                 "label": "Post-substitution effect",
-                "value": f"{post_stats['attacking_activity']} attacking actions in the next three minutes",
+                "value": f"{post_stats['attacking_activity']} attacking actions in the next three and a half minutes",
                 "event_ids": post_stats["event_ids"],
                 "context": "The immediate response after the substitution was introduced.",
             },
@@ -291,6 +326,13 @@ def _detect_substitution_impact(events: Sequence[Dict[str, Any]], *, match_id: s
             {"label": "Before substitution", "start": pre_start, "end": ts},
             {"label": "After substitution", "start": ts, "end": post_end},
         ]
+        if event.get("schema_version") == 2:
+            evidence.append({
+                "label": "Recorded attacking threat",
+                "value": f"{pre_stats['threats']} threat indicators before; {post_stats['threats']} after, across {post_stats['sequence_count']} possessions",
+                "event_ids": [*pre_stats["event_ids"], *post_stats["event_ids"]],
+                "context": "Counts attacking entries, shots and goals. Not expected goals or proof of causation.",
+            })
         case = _build_case(
             match_id=match_id,
             case_type="substitution_impact",
@@ -339,9 +381,14 @@ def _detect_momentum_shift(events: Sequence[Dict[str, Any]], *, match_id: str) -
         last_seen[team_id] = ts
 
         pre_start = max(0, ts - 120)
-        post_end = ts + 180
+        post_end = ts + CASE_OBSERVATION_SECONDS["possession_change"]
         pre_stats = _window_summary(ordered, team_id, pre_start, ts)
         post_stats = _window_summary(ordered, team_id, ts, post_end)
+
+        if event.get("schema_version") == 2:
+            if (post_stats["sequence_count"] < 2 or post_stats["shots"] < 1 or
+                    post_stats["threats"] < 3 or post_stats["threats"] / 3 <= pre_stats["threats"] / 2 + .5):
+                continue
 
         if post_stats["event_count"] < 3 or pre_stats["event_count"] < 1:
             continue
@@ -371,6 +418,13 @@ def _detect_momentum_shift(events: Sequence[Dict[str, Any]], *, match_id: str) -
                 "context": "The immediate burst after the turning point.",
             },
         ]
+        if event.get("schema_version") == 2:
+            evidence.append({
+                "label": "Recorded attacking threat",
+                "value": f"{pre_stats['threats']} threat indicators before; {post_stats['threats']} after, across {post_stats['sequence_count']} possessions",
+                "event_ids": [*pre_stats["event_ids"], *post_stats["event_ids"]],
+                "context": "Counts attacking entries, shots and goals. Not expected goals or proof of causation.",
+            })
         case = _build_case(
             match_id=match_id,
             case_type="momentum_shift",
@@ -429,9 +483,12 @@ def _detect_missed_opportunity(events: Sequence[Dict[str, Any]], *, match_id: st
         if ts < 30:
             continue
         post_start = ts + 1
-        post_end = ts + 90
+        post_end = ts + CASE_OBSERVATION_SECONDS["shot"]
         pre_stats = _window_summary(ordered, team_id, pre_start, pre_end)
         post_stats = _window_summary(ordered, team_id, post_start, post_end)
+        if event.get("schema_version") == 2:
+            if metadata.get("shot_quality") != "good" or pre_stats["progressive_actions"] < 2:
+                continue
         if pre_stats["event_count"] < 3 or pre_stats["pass_attempts"] + pre_stats["pressure_events"] < 2:
             continue
         if post_stats["shots"] > 0 or post_stats["goals"] > 0:
@@ -453,6 +510,13 @@ def _detect_missed_opportunity(events: Sequence[Dict[str, Any]], *, match_id: st
                 "context": "The actual result of the attempt.",
             },
         ]
+        if event.get("schema_version") == 2:
+            evidence.append({
+                "label": "Recorded attacking threat",
+                "value": f"{pre_stats['threats']} threat indicators before; {post_stats['threats']} after, across {post_stats['sequence_count']} possessions",
+                "event_ids": [*pre_stats["event_ids"], *post_stats["event_ids"]],
+                "context": "Counts attacking entries, shots and goals. Not expected goals or proof of causation.",
+            })
         case = _build_case(
             match_id=match_id,
             case_type="missed_opportunity",
@@ -509,6 +573,8 @@ def detect_cases(
 
     deduped: Dict[str, Dict[str, Any]] = {}
     for case in cases:
-        if case["available_timestamp"] <= observed_through:
+        # A half-time reset is not evidence for a tactical swing across the break.
+        crosses_half = any(window["start"] < 2700 < window["end"] for window in case["relevant_windows"])
+        if case["available_timestamp"] <= observed_through and not crosses_half:
             deduped[case["case_id"]] = case
     return sorted(deduped.values(), key=lambda item: (item["detection_timestamp"], item["case_type"]))

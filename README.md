@@ -12,7 +12,9 @@ Football Courtroom is a mock, AI-storytelling football experience where match mo
 ## Project structure
 
 - [backend/app/main.py](backend/app/main.py): FastAPI routes and CORS configuration
-- [backend/app/synthetic_match.py](backend/app/synthetic_match.py): synthetic generator, event sequencing, and match-state calculations
+- [backend/app/synthetic_match.py](backend/app/synthetic_match.py): fixture models and event-derived statistics
+- [backend/app/simulation.py](backend/app/simulation.py): coherent possession, role, ball and timing simulation
+- [docs/simulation.md](docs/simulation.md): v2 event contract, calibration assumptions and limitations
 - [frontend/src/App.jsx](frontend/src/App.jsx): scene navigation and session provider
 - [frontend/src/scenes](frontend/src/scenes): welcome, match replay, and courtroom presentation
 - [frontend/src/session](frontend/src/session): shared context, reducer, replay loading, and cancellation
@@ -72,7 +74,7 @@ The SSE endpoint streams events in order with a configurable replay speed and gr
 
 ### Replay synchronization
 
-The frontend uses one inclusive `through_timestamp` cutoff for statistics, cases, and visible events. Events sharing a timestamp appear together. Statistics and cases are fetched in parallel and committed together; the display holds its last complete snapshot while the next one loads. Playback advances through distinct event timestamps at the selected rate, with network loading time added between steps. SSE remains available but is not used by the frontend.
+The frontend uses one inclusive `through_timestamp` cutoff for statistics, cases, and visible events. Events sharing a timestamp appear together. Statistics and cases are fetched in parallel and committed together; the display holds its last complete snapshot while the next one loads. Playback advances a continuous shared clock, interpolating recorded ball movement at the selected speed. Completed events and case-eligibility boundaries trigger atomic statistics/case refreshes; the clock briefly waits for those responses. SSE remains available but is not used by the frontend.
 
 Both `/state` and `/cases` interpret `through_event=N` as the first N chronologically sorted events, including zero for an empty replay. This corrects the previous case-endpoint behavior that filtered original generation indexes. When both filters are supplied, both apply.
 
@@ -94,7 +96,7 @@ Production hosting must either forward `/api` to FastAPI or supply that environm
 
 The Match scene starts with a fixture picker. Club colors and abbreviations come from each fixture's backend metadata. Choose a tile and enter its replay; Change fixture returns to the picker and pauses playback.
 
-The SVG pitch projects recorded 0–100 event coordinates into a fixed home-left-to-right / away-right-to-left view. Passes and shots receive paths only when both endpoints are recorded. A single location is rendered as a point; missing positions are never filled with invented player tracking. The latest observed event supplies the pitch overlay and caption.
+The SVG pitch projects recorded 0–100 ball coordinates in fixed stadium space, reversing attacking directions at half time. Passes, carries, shots and clearances interpolate over recorded durations, with recent possession trails and distinct turnover/pressure cues. In-flight results stay hidden until completion. Missing positions are never filled with invented player tracking. See [the simulation notes](docs/simulation.md) for timing, statistics, eligibility and model assumptions.
 
 The timeline supports mouse/touch dragging and native range-keyboard navigation. It can seek anywhere between kickoff and full time, pausing playback. Next/previous skip to distinct event timestamps. All displayed statistics, pitch events, and cases continue to use the last committed snapshot while a seek loads. Old requests are canceled and version-checked. Goals, substitutions, cards, and courtroom markers appear only once observed; case markers use eligibility time rather than trigger time. Rewinding removes future markers and cases.
 

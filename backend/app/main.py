@@ -58,6 +58,7 @@ async def fetch_match(match_id: str) -> dict[str, object]:
                     "name": player.name,
                     "position": player.position,
                     "squad_number": player.squad_number,
+                    "is_starter": player.is_starter,
                 }
                 for player in team.players
             ],
@@ -70,6 +71,7 @@ async def fetch_match(match_id: str) -> dict[str, object]:
             "name": player.name,
             "position": player.position,
             "squad_number": player.squad_number,
+            "is_starter": player.is_starter,
             "team_id": team.team_id,
         }
         for team in (match.home_team, match.away_team)
@@ -143,8 +145,10 @@ async def stream_match_events(
                     "event": match.events[idx],
                     "synthetic": True,
                 }
+                if idx > start:
+                    gap = match.events[idx]["timestamp"] - match.events[idx - 1]["timestamp"]
+                    await asyncio.sleep(max(0, gap) / speed)
                 yield f"data: {json.dumps(payload)}\n\n"
-                await asyncio.sleep(1.0 / speed)
         except asyncio.CancelledError:
             return
 

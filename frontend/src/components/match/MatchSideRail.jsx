@@ -30,6 +30,8 @@ export default function MatchSideRail({
     ['Shots', state?.shots],
     ['On target', state?.shots_on_target],
     ['Pressure', state?.pressure_events],
+    ['Tackles won', state?.tackles_won],
+    ['Interceptions', state?.interceptions],
     ['Fouls', state?.fouls],
     ['Yellow cards', state?.yellow_cards],
     ['Red cards', state?.red_cards],
@@ -108,8 +110,8 @@ export default function MatchSideRail({
               </div>
             ))}
             <p className="rail-footnote">
-              Statistics reflect the current replay position. Possession is
-              estimated from events.
+              Statistics reflect the current replay position. Possession uses
+              recorded in-play action durations.
             </p>
           </>
         ) : null}

@@ -44,9 +44,19 @@ export function MatchSessionProvider({ children, api = apiClient }) {
 
   useEffect(() => {
     if (!isPlaying || screen !== 'match' || pendingTimestamp !== null) return
-    const timer = window.setTimeout(() => dispatch({ type: 'TICK' }), 1000 / replaySpeed)
-    return () => window.clearTimeout(timer)
-  }, [isPlaying, screen, pendingTimestamp, replaySpeed, session.replayTimestamp])
+    let previous = null
+    let frame
+    const advance = (now) => {
+      if (previous === null) previous = now
+      if (now - previous >= 30) {
+        dispatch({ type: 'ADVANCE_CLOCK', elapsed: (now - previous) / 1000 })
+        previous = now
+      }
+      frame = window.requestAnimationFrame(advance)
+    }
+    frame = window.requestAnimationFrame(advance)
+    return () => window.cancelAnimationFrame(frame)
+  }, [isPlaying, screen, pendingTimestamp, replaySpeed])
 
   useEffect(() => {
     if (!caseNotifications.length) return

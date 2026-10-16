@@ -484,21 +484,6 @@
   color: #809b88;
   font-size: 9px;
 }
-.goal-ring {
-  animation: goal-pulse 0.9s ease-out 2;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-@keyframes goal-pulse {
-  from {
-    opacity: 1;
-    scale: 0.6;
-  }
-  to {
-    opacity: 0;
-    scale: 2;
-  }
-}
 .event-caption {
   display: flex;
   align-items: center;

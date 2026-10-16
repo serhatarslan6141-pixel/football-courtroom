@@ -1,13 +1,63 @@
 import { useId } from 'react'
 import { clubFor, eventGeometry } from '../../domain/broadcast.js'
+import { replayVisual } from '../../domain/replayVisual.js'
+import { useReducedMotion } from '../../hooks/useReducedMotion.js'
 import { normalizeTeamKey } from '../../domain/formatters.js'
 
-export default function PitchStage({ event, match, children }) {
+function RecordedPath({ event, path, color, marker, opacity = 1, testId }) {
+  if (!path) return null
+  const failed = event.metadata?.outcome === 'incomplete'
+  const carry = ['carry', 'dribble'].includes(event.event_type)
+  return (
+    <line
+      data-testid={testId}
+      x1={path.start.x}
+      y1={path.start.y}
+      x2={path.end.x}
+      y2={path.end.y}
+      stroke={failed ? '#d99b88' : color}
+      opacity={opacity}
+      strokeWidth={event.event_type === 'shot' ? '.7' : carry ? '.35' : '.45'}
+      strokeDasharray={
+        failed
+          ? '1 .7'
+          : carry
+            ? '.4 .8'
+            : event.event_type === 'clearance'
+              ? '2 1'
+              : undefined
+      }
+      markerEnd={carry ? undefined : `url(#${marker})`}
+    />
+  )
+}
+
+export default function PitchStage({
+  event,
+  events = [],
+  timestamp = event?.timestamp ?? 0,
+  match,
+  children,
+}) {
   const id = useId().replace(/:/g, '')
-  const { point, path } = eventGeometry(event)
-  const side = normalizeTeamKey(event?.team_id)
+  const reducedMotion = useReducedMotion()
+  const visual = events.length
+    ? replayVisual(events, timestamp, reducedMotion)
+    : null
+  const current = visual?.event || event
+  const geometry = eventGeometry(current)
+  const point = visual ? visual.ball : geometry.point
+  const path = visual ? visual.path : geometry.path
+  const side = normalizeTeamKey(current?.team_id)
   const club = clubFor(match, side || 'home')
-  const type = event?.event_type
+  const owner = clubFor(match, current?.possession_team_id || side || 'home')
+  const type = current?.event_type
+  const cue = visual?.cue || current
+  const cueType = cue?.event_type
+  const cuePoint = eventGeometry(cue).point
+  const period = current?.period || 1
+  const phase = current?.metadata?.phase?.replace(/_/g, ' ')
+  const goalAge = Math.max(0, timestamp - (cue?.timestamp ?? timestamp))
   const home = clubFor(match, 'home')
   const away = clubFor(match, 'away')
   return (
@@ -16,7 +66,10 @@ export default function PitchStage({ event, match, children }) {
         <span>
           <i className="status-dot" /> TACTICAL FEED
         </span>
-        <span>2D EVENT REPLAY</span>
+        <span>
+          {period === 2 ? 'SECOND HALF' : 'FIRST HALF'}
+          {phase ? ` · ${phase.toUpperCase()}` : ' · 2D EVENT REPLAY'}
+        </span>
       </div>
       <svg
         className="football-pitch"
@@ -47,7 +100,7 @@ export default function PitchStage({ event, match, children }) {
             markerHeight="4"
             orient="auto-start-reverse"
           >
-            <path d="M0 0 10 5 0 10Z" fill={club.color} />
+            <path d="M0 0 10 5 0 10Z" fill="context-stroke" />
           </marker>
           <pattern
             id={`${id}-net`}
@@ -92,81 +145,139 @@ export default function PitchStage({ event, match, children }) {
             fill={`url(#${id}-net)`}
           />
         </g>
-        <g
-          className="pitch-event"
-          key={event?.event_id}
-          style={{ '--event-color': club.color }}
-        >
-          {point && type === 'pressure_event' ? (
+        <g className="possession-trail" aria-label="Recent possession sequence">
+          {visual?.trail
+            .filter((item) => item.event_id !== current?.event_id)
+            .map((item, index) => (
+              <RecordedPath
+                key={item.event_id}
+                event={item}
+                path={eventGeometry(item).path}
+                marker={`${id}-arrow`}
+                color={clubFor(match, item.team_id).color}
+                opacity={0.14 + index * 0.07}
+              />
+            ))}
+        </g>
+        <g className="pitch-event" style={{ '--event-color': club.color }}>
+          {cuePoint && cueType === 'pressure_event' ? (
             <circle
               data-testid="pressure-region"
-              cx={point.x}
-              cy={point.y}
-              r="7"
-              fill={club.color}
-              fillOpacity=".14"
-              stroke={club.color}
+              cx={cuePoint.x}
+              cy={cuePoint.y}
+              r="5"
+              fill={clubFor(match, cue.team_id).color}
+              fillOpacity=".12"
+              stroke={clubFor(match, cue.team_id).color}
               strokeWidth=".3"
               strokeDasharray="1 1"
             />
           ) : null}
-          {path ? (
-            <>
-              <line
-                data-testid="event-path"
-                x1={path.start.x}
-                y1={path.start.y}
-                x2={path.end.x}
-                y2={path.end.y}
-                stroke={club.color}
-                strokeWidth={type === 'shot' ? '.75' : '.5'}
-                strokeDasharray={type === 'shot' ? '1.4 .8' : undefined}
-                markerEnd={`url(#${id}-arrow)`}
-              />
-              <circle
-                cx={path.start.x}
-                cy={path.start.y}
-                r=".8"
-                fill="#e9eee7"
-              />
-              <circle
-                cx={path.end.x}
-                cy={path.end.y}
-                r="1.2"
-                fill={club.color}
-                fillOpacity=".3"
-                stroke={club.color}
-                strokeWidth=".3"
-              />
-            </>
+          <RecordedPath
+            event={current || {}}
+            path={path}
+            color={club.color}
+            marker={`${id}-arrow`}
+            testId="event-path"
+          />
+          {cuePoint &&
+          [
+            'tackle',
+            'foul',
+            'interception',
+            'recovery',
+            'possession_change',
+            'save',
+          ].includes(cueType) ? (
+            <g
+              data-testid="possession-cue"
+              data-cue-type={cueType}
+              transform={`translate(${cuePoint.x} ${cuePoint.y})`}
+            >
+              {cueType === 'recovery' ? (
+                <circle
+                  r="2.5"
+                  fill="none"
+                  stroke={clubFor(match, cue.team_id).color}
+                  strokeWidth=".45"
+                />
+              ) : cueType === 'save' ? (
+                <rect
+                  x="-2.3"
+                  y="-2.3"
+                  width="4.6"
+                  height="4.6"
+                  rx=".5"
+                  fill="none"
+                  stroke={clubFor(match, cue.team_id).color}
+                  strokeWidth=".45"
+                />
+              ) : (
+                <path
+                  d={
+                    ['interception', 'possession_change'].includes(cueType)
+                      ? 'M0-2.8 2.8 0 0 2.8-2.8 0Z'
+                      : 'm-2-2 4 4m0-4-4 4'
+                  }
+                  fill="none"
+                  stroke={clubFor(match, cue.team_id).color}
+                  strokeWidth=".45"
+                />
+              )}
+              <text
+                y="5"
+                textAnchor="middle"
+                fontSize="1.3"
+                fill="#d8dcca"
+                stroke="#0a211a"
+                strokeWidth=".2"
+                paintOrder="stroke"
+              >
+                {cueType.replace(/_/g, ' ').toUpperCase()}
+              </text>
+            </g>
           ) : null}
           {point ? (
             <g
               data-testid="event-point"
+              data-in-progress={visual?.inProgress || false}
               transform={`translate(${point.x} ${point.y})`}
             >
-              {type === 'goal' ? (
+              {cueType === 'goal' && goalAge <= 1.8 ? (
                 <circle
                   className="goal-ring"
-                  r="4"
+                  r={reducedMotion ? 3 : 2 + goalAge * 2}
+                  opacity={reducedMotion ? 0.8 : 1 - goalAge / 2}
                   fill="none"
                   stroke="#e7c974"
                   strokeWidth=".5"
                 />
               ) : null}
-              <circle r="2.2" fill={club.color} fillOpacity=".16" />
+              <circle r="2.1" fill={owner.color} fillOpacity=".19" />
               <circle
-                r=".95"
-                fill={type === 'goal' ? '#e7c974' : club.color}
-                stroke="#f0f4eb"
-                strokeWidth=".3"
+                r=".85"
+                fill="#f0f1df"
+                stroke={owner.color}
+                strokeWidth=".4"
               />
-              {['foul', 'tackle'].includes(type) ? (
-                <path
-                  d="m-1.2-1.2 2.4 2.4m0-2.4-2.4 2.4"
-                  stroke="white"
-                  strokeWidth=".35"
-                />
+              {current?.metadata?.player_name &&
+              current.metadata.ball_in_play !== false ? (
+                <text
+                  className="active-player-label"
+                  x={point.x > 88 ? -2.2 : 2.2}
+                  y={point.y < 8 ? 3.5 : -2.2}
+                  textAnchor={point.x > 88 ? 'end' : 'start'}
+                  fill="#eff0db"
+                  stroke="#0a211a"
+                  strokeWidth=".25"
+                  paintOrder="stroke"
+                  fontSize="1.6"
+                >
+                  {current.metadata.player_name}
+                  {current.metadata.player_role
+                    ? ` · ${current.metadata.player_role}`
+                    : ''}
+                </text>
               ) : null}
             </g>
           ) : null}
@@ -178,9 +289,17 @@ export default function PitchStage({ event, match, children }) {
         </span>
       ) : null}
       <div className="pitch-orientation">
-        <span style={{ color: home.color }}>{home.shortName} ATTACK →</span>
+        <span style={{ color: home.color }}>
+          {period === 1
+            ? `${home.shortName} ATTACK →`
+            : `← ${home.shortName} ATTACK`}
+        </span>
         <span>EVENT LOCATIONS · NO TRACKING DATA</span>
-        <span style={{ color: away.color }}>← {away.shortName} ATTACK</span>
+        <span style={{ color: away.color }}>
+          {period === 1
+            ? `← ${away.shortName} ATTACK`
+            : `${away.shortName} ATTACK →`}
+        </span>
       </div>
       {children}
     </section>

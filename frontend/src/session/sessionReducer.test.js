@@ -15,6 +15,35 @@ function ready(timestamp = 0) {
 }
 
 describe('match session', () => {
+  it('advances a continuous clock and freezes at the next statistical boundary', () => {
+    let session = { ...ready(), screen: 'match', isPlaying: true }
+    session = reduce(session, { type: 'ADVANCE_CLOCK', elapsed: .1 })
+    expect(session.replayTimestamp).toBeCloseTo(.1)
+    expect(session.snapshot.timestamp).toBe(0)
+    session = reduce(session, { type: 'SET_SPEED', speed: 2 })
+    session = reduce(session, { type: 'ADVANCE_CLOCK', elapsed: .1 })
+    expect(session.replayTimestamp).toBeCloseTo(.3)
+    session = { ...session, replayTimestamp: 9.9 }
+    session = reduce(session, { type: 'ADVANCE_CLOCK', elapsed: .1 })
+    expect(session.pendingTimestamp).toBe(10)
+    expect(session.replayTimestamp).toBe(9.9)
+    expect(reduce(session, { type: 'ADVANCE_CLOCK', elapsed: .1 })).toBe(session)
+  })
+
+  it('refreshes at a case eligibility boundary even between completed events', () => {
+    let session = { ...ready(), screen: 'match', isPlaying: true, replayTimestamp: 4.9 }
+    session.snapshot.state.next_update_timestamp = 5
+    session = reduce(session, { type: 'ADVANCE_CLOCK', elapsed: .2 })
+    expect(session.pendingTimestamp).toBe(5)
+  })
+
+  it('pausing and opening the fixture picker freeze continuous playback', () => {
+    const paused = { ...ready(), screen: 'match', isPlaying: false }
+    expect(reduce(paused, { type: 'ADVANCE_CLOCK', elapsed: .1 })).toBe(paused)
+    const picker = reduce({ ...paused, isPlaying: true }, { type: 'SHOW_FIXTURES' })
+    expect(reduce(picker, { type: 'ADVANCE_CLOCK', elapsed: .1 })).toBe(picker)
+  })
+
   it('commits events, statistics and cases together, including equal timestamps', () => {
     let session = ready()
     session = reduce(session, { type: 'NAVIGATE', screen: 'match' })

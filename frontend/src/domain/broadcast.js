@@ -17,7 +17,7 @@ export function clubFor(match, side) {
   }
 }
 
-function point(value) {
+export function pitchPoint(value) {
   if (
     !value ||
     ![value.x, value.y].every(
@@ -35,10 +35,17 @@ function point(value) {
 export function eventGeometry(event) {
   if (!event) return { point: null, path: null }
   const metadata = event.metadata || {}
-  const location = point(metadata.location) || point(event)
-  const start = point(metadata.start) || location
-  const end = point(metadata.end) || point(metadata.target)
-  const canDrawPath = ['pass', 'cross', 'shot'].includes(event.event_type)
+  const location = pitchPoint(metadata.location) || pitchPoint(event)
+  const start = pitchPoint(metadata.start) || location
+  const end = pitchPoint(metadata.end) || pitchPoint(metadata.target)
+  const canDrawPath = [
+    'pass',
+    'cross',
+    'shot',
+    'carry',
+    'dribble',
+    'clearance',
+  ].includes(event.event_type)
   return {
     point: location || start || end,
     path: canDrawPath && start && end ? { start, end } : null,
