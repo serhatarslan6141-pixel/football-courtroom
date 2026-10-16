@@ -6,10 +6,11 @@ import { MatchSessionProvider } from './session/MatchSessionProvider.jsx'
 import { useMatchSession } from './session/useMatchSession.js'
 
 function AppScenes() {
-  const { screen, selectedCase, goToWelcome, goToMatch, openCourtroom } =
-    useMatchSession()
+  const { screen, goToWelcome, goToMatch } = useMatchSession()
   return (
-    <div className={screen === 'match' ? 'app-shell match-shell' : 'app-shell'}>
+    <div
+      className={`app-shell${screen === 'match' ? ' match-shell' : screen === 'courtroom' ? ' court-shell' : ''}`}
+    >
       {screen !== 'welcome' ? (
         <header className="topbar">
           <button
@@ -29,30 +30,13 @@ function AppScenes() {
               </button>
             </div>
           ) : (
-            <div className="header-actions">
-              <button
-                type="button"
-                className="secondary-btn small"
-                onClick={goToWelcome}
-              >
-                Welcome
+            <div className="court-header-actions">
+              <span className="court-session-label">
+                A CASE IS BEFORE THE COURT
+              </span>
+              <button type="button" className="court-text" onClick={goToMatch}>
+                Return to match <span aria-hidden="true">↗</span>
               </button>
-              <button
-                type="button"
-                className="secondary-btn small"
-                onClick={goToMatch}
-              >
-                Match centre
-              </button>
-              {selectedCase ? (
-                <button
-                  type="button"
-                  className="secondary-btn small"
-                  onClick={() => openCourtroom(selectedCase)}
-                >
-                  Case room
-                </button>
-              ) : null}
             </div>
           )}
         </header>

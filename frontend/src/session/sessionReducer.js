@@ -1,3 +1,5 @@
+import { TRIAL_STAGES, VOTE_LABELS, caseAvailableAt, evidenceBounds, voteKey } from '../domain/courtroom.js'
+
 export const initialSession = {
   screen: 'welcome',
   matches: [],
@@ -19,6 +21,9 @@ export const initialSession = {
   selectedCaseId: '',
   courtroomReturnPosition: null,
   evidenceTimestamp: null,
+  trialStage: 'introduction',
+  trialFurthestStage: 0,
+  caseVotes: {},
   caseNotifications: [],
   seenCaseIds: [],
   error: '',
@@ -29,6 +34,7 @@ function selectMatch(session, id) {
     ...initialSession,
     screen: session.screen === 'courtroom' ? 'match' : session.screen,
     matches: session.matches,
+    caseVotes: session.caseVotes,
     catalogStatus: session.catalogStatus,
     catalogVersion: session.catalogVersion,
     selectedMatchId: id,
@@ -166,7 +172,8 @@ export function sessionReducer(session, action) {
       }
     case 'OPEN_COURTROOM': {
       const selected = session.snapshot?.cases.find((item) => item.case_id === action.caseId)
-      if (!selected) return session
+      if (!selected || caseAvailableAt(selected) > session.replayTimestamp
+        || (selected.match_id && selected.match_id !== session.selectedMatchId)) return session
       return {
         ...session,
         screen: 'courtroom',
@@ -178,14 +185,84 @@ export function sessionReducer(session, action) {
         selectedCaseId: selected.case_id,
         courtroomReturnPosition: session.courtroomReturnPosition ?? session.replayTimestamp,
         evidenceTimestamp: selected.detection_timestamp,
+        trialStage: 'introduction',
+        trialFurthestStage: 0,
       }
     }
-    case 'REVIEW_EVIDENCE':
-      if (session.screen !== 'courtroom' || !Number.isFinite(action.timestamp)) return session
+    case 'REVIEW_EVIDENCE': {
+      if (session.screen !== 'courtroom' || !Number.isFinite(action.timestamp))
+        return session
+      const selected = session.snapshot?.cases.find(
+        (item) => item.case_id === session.selectedCaseId,
+      )
+      if (!selected) return session
+      const bounds = evidenceBounds(selected, session.courtroomReturnPosition)
       return {
         ...session,
-        evidenceTimestamp: Math.max(0, Math.min(action.timestamp, session.courtroomReturnPosition)),
+        evidenceTimestamp: Math.max(
+          bounds.start,
+          Math.min(action.timestamp, bounds.end),
+        ),
       }
+    }
+    case 'ADVANCE_TRIAL': {
+      if (session.screen !== 'courtroom') return session
+      const index = TRIAL_STAGES.findIndex(
+        (stage) => stage.id === session.trialStage,
+      )
+      if (index < 0 || index >= 3) return session // A vote, not navigation, unlocks the ruling.
+      const selected = session.snapshot?.cases.find(
+        (item) => item.case_id === session.selectedCaseId,
+      )
+      if (!selected) return session
+      const bounds = evidenceBounds(selected, session.courtroomReturnPosition)
+      return {
+        ...session,
+        trialStage: TRIAL_STAGES[index + 1].id,
+        trialFurthestStage: Math.max(session.trialFurthestStage, index + 1),
+        ...(index === 0
+          ? {
+              evidenceTimestamp: Math.max(
+                bounds.start,
+                selected.detection_timestamp - 6,
+              ),
+            }
+          : {}),
+      }
+    }
+    case 'SET_TRIAL_STAGE': {
+      if (session.screen !== 'courtroom') return session
+      const index = TRIAL_STAGES.findIndex((stage) => stage.id === action.stage)
+      if (index < 0 || index > session.trialFurthestStage) return session
+      if (
+        action.stage === 'verdict' &&
+        !session.caseVotes[
+          voteKey(session.selectedMatchId, session.selectedCaseId)
+        ]
+      )
+        return session
+      return { ...session, trialStage: action.stage }
+    }
+    case 'CAST_CASE_VOTE': {
+      if (
+        session.screen !== 'courtroom' ||
+        session.trialStage !== 'vote' ||
+        action.caseId !== session.selectedCaseId ||
+        action.matchVersion !== session.matchVersion ||
+        !Object.hasOwn(VOTE_LABELS, action.vote)
+      )
+        return session
+      return {
+        ...session,
+        caseVotes: {
+          ...session.caseVotes,
+          [voteKey(session.selectedMatchId, session.selectedCaseId)]:
+            action.vote,
+        },
+        trialStage: 'verdict',
+        trialFurthestStage: 4,
+      }
+    }
     case 'EXPIRE_NOTIFICATIONS':
       return { ...session, caseNotifications: session.caseNotifications.filter((item) => item.expiresAt > action.now) }
     default:

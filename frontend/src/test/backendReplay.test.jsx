@@ -166,3 +166,32 @@ describe('backend generator → API → pitch integration', () => {
     ).toBeGreaterThan(0)
   })
 })
+
+it('uses complete real API evidence for each courtroom case without escalating detector confidence', async () => {
+  const { createTrialPresentation } = await import('../domain/courtroom.js')
+  for (const item of fixture.cases) {
+    expect(
+      createTrialPresentation(
+        item,
+        fixture.events,
+        fixture.match,
+        item.available_timestamp - 1,
+      ),
+    ).toBeNull()
+    const trial = createTrialPresentation(
+      item,
+      fixture.events,
+      fixture.match,
+      item.available_timestamp,
+    )
+    expect(trial).not.toBeNull()
+    expect(trial.arguments.prosecution).toHaveLength(item.evidence.length)
+    expect(trial.arguments.defense).toHaveLength(item.counterevidence.length)
+    expect(trial.assessment.result).toBe('inconclusive')
+    expect(
+      trial.knownEvents.every(
+        (event) => event.timestamp <= item.available_timestamp,
+      ),
+    ).toBe(true)
+  }
+})

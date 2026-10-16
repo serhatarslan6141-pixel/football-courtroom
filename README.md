@@ -19,7 +19,8 @@ Football Courtroom is a mock, AI-storytelling football experience where match mo
 - [docs/simulation.md](docs/simulation.md): v2 event contract, supported rules and explicit model limitations
 - [frontend/src/App.jsx](frontend/src/App.jsx): scene navigation and session provider
 - [frontend/src/scenes](frontend/src/scenes): welcome, match replay, and courtroom presentation
-- [frontend/src/session](frontend/src/session): shared context, reducer, replay loading, and cancellation
+- [frontend/src/session](frontend/src/session): shared context, reducer, replay loading, trial progression and session votes
+- [docs/courtroom.md](docs/courtroom.md): interactive trial, evidence boundaries and future response interface
 - [frontend/src/services/apiClient.js](frontend/src/services/apiClient.js): reusable backend client
 - [scripts/start-dev.sh](scripts/start-dev.sh): starts backend and frontend together
 - [scripts/stop-dev.sh](scripts/stop-dev.sh): stops the local services
@@ -103,6 +104,12 @@ The SVG pitch projects recorded 0–100 ball coordinates in fixed stadium space,
 The timeline supports mouse/touch dragging and native range-keyboard navigation. It can seek anywhere between kickoff and full time, pausing playback. Next/previous skip to distinct event timestamps. All displayed statistics, pitch events, and cases continue to use the last committed snapshot while a seek loads. Old requests are canceled and version-checked. Goals, substitutions, cards, and courtroom markers appear only once observed; case markers use eligibility time rather than trigger time. Rewinding removes future markers and cases.
 
 The secondary rail has Stats, Events, and Cases tabs. History is paginated in groups of 20 with bounded internal scrolling. Case alerts open the existing Courtroom scene, preserving the replay return position. Reduced-motion preferences disable goal and alert animations.
+
+### Interactive courtroom
+
+Opening an eligible case starts a five-stage trial in a courtroom with a central bench and opposing lecterns. Begin the trial, replay the recorded incident and its context, hear prosecution and defense submissions one at a time, then record your opinion. Only then does the preliminary assessment appear. Current assessments remain inconclusive where the event record cannot establish significance or causation; no AI judge or generated dialogue is presented.
+
+Votes remain in the current session, scoped to the fixture and case. Evidence playback is separate from the match cursor, and returning restores the exact paused match position. See [the courtroom notes](docs/courtroom.md) for component structure, evidence safeguards and the future Microsoft Foundry response interface.
 
 ## Start and stop commands
 

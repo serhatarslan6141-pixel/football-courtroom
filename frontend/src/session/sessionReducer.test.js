@@ -184,3 +184,104 @@ describe('match session', () => {
     expect(reduce(session, { type: 'SKIP', direction: 1 })).toBe(session)
   })
 })
+
+describe('trial session integrity', () => {
+  const inCourt = () =>
+    reduce(
+      { ...ready(10), screen: 'match' },
+      { type: 'OPEN_COURTROOM', caseId: caseItem.case_id },
+    )
+  const reachVote = (session) =>
+    [1, 2, 3].reduce(
+      (state) => reduce(state, { type: 'ADVANCE_TRIAL' }),
+      session,
+    )
+
+  it('locks the ruling until a case-specific vote and rejects obsolete submissions', () => {
+    const initial = inCourt()
+    expect(reduce(initial, { type: 'SET_TRIAL_STAGE', stage: 'verdict' })).toBe(
+      initial,
+    )
+    const voting = reachVote(initial)
+    expect(voting.trialStage).toBe('vote')
+    expect(reduce(voting, { type: 'ADVANCE_TRIAL' })).toBe(voting)
+    const action = {
+      type: 'CAST_CASE_VOTE',
+      caseId: caseItem.case_id,
+      matchVersion: voting.matchVersion,
+      vote: 'defense',
+    }
+    expect(reduce(voting, { ...action, caseId: 'another-case' })).toBe(voting)
+    expect(
+      reduce(voting, { ...action, matchVersion: voting.matchVersion - 1 }),
+    ).toBe(voting)
+    expect(reduce(voting, { ...action, vote: 'invalid' })).toBe(voting)
+    const recorded = reduce(voting, action)
+    expect(recorded.trialStage).toBe('verdict')
+    expect(Object.values(recorded.caseVotes)).toEqual(['defense'])
+    expect(recorded.replayTimestamp).toBe(10)
+    expect(recorded.isPlaying).toBe(false)
+  })
+
+  it('keeps votes scoped by match and case across fixture changes', () => {
+    const voting = reachVote(inCourt())
+    const recorded = reduce(voting, {
+      type: 'CAST_CASE_VOTE',
+      caseId: caseItem.case_id,
+      matchVersion: voting.matchVersion,
+      vote: 'insufficient',
+    })
+    const switched = reduce(recorded, { type: 'SELECT_MATCH', id: 'b' })
+    expect(switched.caseVotes).toEqual(recorded.caseVotes)
+    expect(switched.selectedCaseId).toBe('')
+    expect(switched.evidenceTimestamp).toBeNull()
+    expect(switched.trialStage).toBe('introduction')
+    const returned = reduce(switched, { type: 'SELECT_MATCH', id: 'a' })
+    expect(returned.caseVotes).toEqual(recorded.caseVotes)
+  })
+
+  it('bounds evidence by the complete case window rather than later match play', () => {
+    let session = inCourt()
+    session = { ...session, courtroomReturnPosition: 20 }
+    expect(
+      reduce(session, { type: 'REVIEW_EVIDENCE', timestamp: 999 })
+        .evidenceTimestamp,
+    ).toBe(10)
+    expect(
+      reduce(session, { type: 'REVIEW_EVIDENCE', timestamp: -10 })
+        .evidenceTimestamp,
+    ).toBe(0)
+    const altered = {
+      ...caseItem,
+      available_timestamp: 1,
+      relevant_windows: [{ start: 0, end: 15 }],
+    }
+    const waiting = {
+      ...ready(10),
+      snapshot: { ...snapshot(10), cases: [altered] },
+    }
+    expect(
+      reduce(waiting, { type: 'OPEN_COURTROOM', caseId: caseItem.case_id }),
+    ).toBe(waiting)
+  })
+})
+
+it('returns to the exact fractional match cursor after a trial', () => {
+  let session = {
+    ...ready(10),
+    screen: 'match',
+    replayTimestamp: 10.125,
+    isPlaying: true,
+  }
+  session = reduce(session, {
+    type: 'OPEN_COURTROOM',
+    caseId: caseItem.case_id,
+  })
+  session = reduce(session, { type: 'ADVANCE_TRIAL' })
+  session = reduce(session, { type: 'REVIEW_EVIDENCE', timestamp: 3.75 })
+  const returned = reduce(session, { type: 'NAVIGATE', screen: 'match' })
+  expect(returned.replayTimestamp).toBe(10.125)
+  expect(returned.selectedMatchId).toBe('a')
+  expect(returned.isPlaying).toBe(false)
+  expect(returned.snapshot.state.score).toEqual({ home: 1, away: 0 })
+})

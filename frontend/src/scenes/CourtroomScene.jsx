@@ -1,136 +1,207 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMatchSession } from '../session/useMatchSession.js'
-import { formatClock, getCaseDisplayTitle, getMatchHeadline } from '../domain/formatters.js'
+import {
+  createTrialPresentation,
+  scoreAt,
+  TRIAL_STAGES,
+} from '../domain/courtroom.js'
+import { formatClock } from '../domain/formatters.js'
+import { clubFor } from '../domain/broadcast.js'
+import ClubCrest from '../components/match/ClubCrest.jsx'
+import CourtroomSet from '../components/courtroom/CourtroomSet.jsx'
+import JudgeBench from '../components/courtroom/JudgeBench.jsx'
+import TrialProgress from '../components/courtroom/TrialProgress.jsx'
+import CaseIntroduction from '../components/courtroom/CaseIntroduction.jsx'
+import EvidencePlayer from '../components/courtroom/EvidencePlayer.jsx'
+import CounselPodium from '../components/courtroom/CounselPodium.jsx'
+import ArgumentHearing from '../components/courtroom/ArgumentHearing.jsx'
+import UserVerdict from '../components/courtroom/UserVerdict.jsx'
+import JudgeVerdict from '../components/courtroom/JudgeVerdict.jsx'
+import './CourtroomScene.css'
 
-export default function CourtroomScene() {
-  const { selectedCase, goToMatch, matchData, scoreText, replayTimestamp } = useMatchSession()
-
-  if (!selectedCase) {
-    return (
-      <main className="page-shell">
-        <section className="panel empty-panel">
-          <p className="eyebrow">No case selected</p>
-          <h2>No courtroom case is available yet.</h2>
-          <p className="empty-state">Return to the match, keep replaying, and a case will appear when the evidence is strong enough.</p>
-          <button type="button" className="primary-btn" onClick={goToMatch}>Back to match</button>
-        </section>
-      </main>
-    )
+function TrialRoom({ trial }) {
+  const {
+    matchData,
+    trialStage,
+    trialFurthestStage,
+    setTrialStage,
+    advanceTrial,
+    evidenceTimestamp,
+    reviewEvidence,
+    caseVote,
+    castCaseVote,
+    goToMatch,
+  } = useMatchSession()
+  const stageElement = useRef(null)
+  useEffect(() => {
+    stageElement.current?.focus({ preventScroll: true })
+  }, [trialStage])
+  const [side, setSide] = useState('prosecution')
+  const [submission, setSubmission] = useState(0)
+  const changeSide = (value) => {
+    setSide(value)
+    setSubmission(0)
   }
-
-  const caseEvidence = selectedCase.evidence || []
-  const counterEvidence = selectedCase.counterevidence || []
-  const limitations = selectedCase.limitations || []
-  const relevantWindows = selectedCase.relevant_windows || []
-
+  const stageIndex = TRIAL_STAGES.findIndex((stage) => stage.id === trialStage)
+  const incidentScore = scoreAt(trial.knownEvents, trial.incidentTimestamp)
+  const home = clubFor(matchData, 'home'),
+    away = clubFor(matchData, 'away')
   return (
-    <main className="page-shell courtroom-page">
-      <section className="courtroom-hero panel">
+    <main className="courtroom-scene">
+      <div className="court-docket">
+        <span>
+          <i /> THE PEOPLE’S GAME. THE PEOPLE’S COURT.
+        </span>
+        <span>{trial.label}</span>
+      </div>
+      <div
+        className="court-incident-bar"
+        aria-label="Match context at the incident"
+      >
         <div>
-          <p className="eyebrow">The case</p>
-          <h1>{getCaseDisplayTitle(selectedCase, matchData)}</h1>
+          <ClubCrest club={home} small />
+          <span>{home.name}</span>
         </div>
-        <button type="button" className="secondary-btn" onClick={goToMatch}>Return to match</button>
-      </section>
-
-      <section className="panel scoreboard-panel">
-        <div className="team-side">
-          <span className="team-crest purple">{matchData?.home_team?.slice(0, 1)?.toUpperCase() || 'H'}</span>
-          <div>
-            <small>Home</small>
-            <strong>{matchData?.home_team || 'Home club'}</strong>
-          </div>
+        <strong aria-label="Score at the incident">
+          {incidentScore.home} – {incidentScore.away}
+        </strong>
+        <div>
+          <span>{away.name}</span>
+          <ClubCrest club={away} small />
         </div>
-
-        <div className="score-wrap">
-          <span className="score">{scoreText}</span>
-          <small>{formatClock(replayTimestamp)} • {getMatchHeadline(matchData)}</small>
+        <span className="incident-minute">
+          INCIDENT <time>{formatClock(trial.incidentTimestamp)}</time>
+        </span>
+      </div>
+      <div className={`court-room stage-${trialStage}`}>
+        <CourtroomSet />
+        <JudgeBench stage={trialStage} />
+        {trialStage !== 'introduction' ? (
+          <p className="court-case-caption">{trial.question}</p>
+        ) : null}
+        <div className="trial-floor">
+          <CounselPodium
+            side="prosecution"
+            count={trial.arguments.prosecution.length}
+            interactive={trialStage === 'arguments'}
+            active={trialStage === 'arguments' && side === 'prosecution'}
+            onSelect={() => changeSide('prosecution')}
+          />
+          <div
+            className="trial-stage"
+            key={trialStage}
+            ref={stageElement}
+            tabIndex={-1}
+            role="group"
+            aria-label={TRIAL_STAGES[stageIndex].label}
+          >
+            {trialStage === 'introduction' ? (
+              <CaseIntroduction trial={trial} onBegin={advanceTrial} />
+            ) : null}
+            {trialStage === 'evidence' ? (
+              <EvidencePlayer
+                trial={trial}
+                match={matchData}
+                timestamp={evidenceTimestamp}
+                onSeek={reviewEvidence}
+              />
+            ) : null}
+            {trialStage === 'arguments' ? (
+              <ArgumentHearing
+                trial={trial}
+                side={side}
+                index={submission}
+                onSide={changeSide}
+                onIndex={setSubmission}
+                onEvidence={() => setTrialStage('evidence')}
+              />
+            ) : null}
+            {trialStage === 'vote' ? (
+              <UserVerdict vote={caseVote} onVote={castCaseVote} />
+            ) : null}
+            {trialStage === 'verdict' && caseVote ? (
+              <JudgeVerdict
+                assessment={trial.assessment}
+                vote={caseVote}
+                onReturn={goToMatch}
+              />
+            ) : null}
+          </div>
+          <CounselPodium
+            side="defense"
+            count={trial.arguments.defense.length}
+            interactive={trialStage === 'arguments'}
+            active={trialStage === 'arguments' && side === 'defense'}
+            onSelect={() => changeSide('defense')}
+          />
         </div>
-
-        <div className="team-side team-side-right">
-          <div>
-            <small>Away</small>
-            <strong>{matchData?.away_team || 'Away club'}</strong>
-          </div>
-          <span className="team-crest gold">{matchData?.away_team?.slice(0, 1)?.toUpperCase() || 'A'}</span>
-        </div>
-      </section>
-
-      <section className="courtroom-layout">
-        <article className="panel main-case-panel">
-          <div className="panel-header">
-            <p className="eyebrow">Central question</p>
-            <h3>{getCaseDisplayTitle(selectedCase, matchData)}</h3>
-          </div>
-
-          <div className="question-box">
-            <p>Was this the moment that swung the match, or just a short spell that looked bigger in the replay?</p>
-          </div>
-
-          <div className="side-grid">
-            <div className="side-panel prosecutor">
-              <span className="side-label">Prosecution case</span>
-              <ul>
-                {caseEvidence.length ? caseEvidence.map((item) => <li key={`${selectedCase.case_id}-support-${item.label}`}>{item.value}</li>) : <li>Supportive facts will appear here as the evidence is weighed.</li>}
-              </ul>
-            </div>
-
-            <div className="side-panel defense">
-              <span className="side-label">Defence case</span>
-              <ul>
-                {counterEvidence.length ? counterEvidence.map((item) => <li key={`${selectedCase.case_id}-defense-${item}`}>{item}</li>) : <li>Counter-points will appear here as the evidence is weighed.</li>}
-              </ul>
-            </div>
-          </div>
-        </article>
-
-        <aside className="panel side-case-panel">
-          <div className="panel-header">
-            <p className="eyebrow">Match context</p>
-            <h3>What mattered</h3>
-          </div>
-
-          <div className="fact-grid">
-            <div className="fact-box">
-              <span>Case type</span>
-              <strong>{selectedCase.case_type.replace(/_/g, ' ')}</strong>
-            </div>
-            <div className="fact-box">
-              <span>Fixture</span>
-              <strong>{getMatchHeadline(matchData)}</strong>
-            </div>
-            <div className="fact-box">
-              <span>Minute</span>
-              <strong>{formatClock(selectedCase.detection_timestamp)}</strong>
-            </div>
-            <div className="fact-box">
-              <span>Confidence</span>
-              <strong>{selectedCase.confidence || 'N/A'}</strong>
-            </div>
-          </div>
-
-          <div className="judge-panel">
-            <span className="side-label">Match official view</span>
-            <ul>
-              {limitations.length ? limitations.map((item) => <li key={`${selectedCase.case_id}-limit-${item}`}>{item}</li>) : <li>Official notes will be added here as the case is reviewed.</li>}
-            </ul>
-          </div>
-        </aside>
-      </section>
-
-      <section className="panel timeline-panel">
-        <div className="panel-header">
-          <p className="eyebrow">Relevant moments</p>
-          <h3>Context windows</h3>
-        </div>
-        <div className="window-grid">
-          {relevantWindows.length ? relevantWindows.map((windowItem, index) => (
-            <div key={`${selectedCase.case_id}-window-${index}`} className="window-card">
-              <span>{windowItem.label}</span>
-              <strong>{formatClock(windowItem.start)} - {formatClock(windowItem.end)}</strong>
-            </div>
-          )) : <p className="empty-state">No timeline windows are available yet.</p>}
-        </div>
-      </section>
+      </div>
+      <TrialProgress
+        stage={trialStage}
+        furthest={trialFurthestStage}
+        onNavigate={setTrialStage}
+      />
+      <div className="trial-footer">
+        {stageIndex > 0 ? (
+          <button
+            type="button"
+            className="court-text"
+            onClick={() => setTrialStage(TRIAL_STAGES[stageIndex - 1].id)}
+          >
+            ← {TRIAL_STAGES[stageIndex - 1].label}
+          </button>
+        ) : (
+          <span>A MOMENT ON THE PITCH. A QUESTION FOR THE COURT.</span>
+        )}
+        {trialStage === 'evidence' || trialStage === 'arguments' ? (
+          <button
+            type="button"
+            className="court-primary"
+            onClick={advanceTrial}
+          >
+            {trialStage === 'evidence'
+              ? 'Hear the arguments'
+              : 'Make your call'}{' '}
+            <span aria-hidden="true">→</span>
+          </button>
+        ) : (
+          <small>SIMULATED MATCH · REAL DEBATE</small>
+        )}
+      </div>
     </main>
   )
+}
+
+export default function CourtroomScene() {
+  const {
+    selectedCase,
+    events,
+    matchData,
+    courtroomReturnPosition,
+    goToMatch,
+  } = useMatchSession()
+  const trial = useMemo(
+    () =>
+      createTrialPresentation(
+        selectedCase,
+        events,
+        matchData,
+        courtroomReturnPosition,
+      ),
+    [selectedCase, events, matchData, courtroomReturnPosition],
+  )
+  if (!trial)
+    return (
+      <main className="court-empty">
+        <h1>The court is waiting.</h1>
+        <p>
+          Return to the match to discover a case with a complete evidence
+          window.
+        </p>
+        <button className="court-primary" type="button" onClick={goToMatch}>
+          Back to match
+        </button>
+      </main>
+    )
+  return <TrialRoom key={trial.caseId} trial={trial} />
 }

@@ -68,7 +68,7 @@ describe('broadcast scenes and synchronized replay', () => {
     expect(screen.getByText(/Alex Fiction/, { selector: '.caption-meta' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Courtroom case available at 00:10' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /NEW CASE/ }))
-    expect(screen.getByText('Prosecution case')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Begin trial' })).toBeTruthy()
     const calls = api.loadSnapshot.mock.calls.length
     await act(() => vi.advanceTimersByTimeAsync(10000))
     expect(api.loadSnapshot).toHaveBeenCalledTimes(calls)

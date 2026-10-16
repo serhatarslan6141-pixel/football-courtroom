@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useReducer } from 'react'
+import { voteKey } from '../domain/courtroom.js'
 import { apiClient } from '../services/apiClient.js'
 import { MatchSessionContext } from './MatchSessionContext.js'
 import { initialSession, sessionReducer, visibleEvents } from './sessionReducer.js'
@@ -92,6 +93,10 @@ export function MatchSessionProvider({ children, api = apiClient }) {
       goToWelcome: () => dispatch({ type: 'NAVIGATE', screen: 'welcome' }),
       goToMatch: () => dispatch({ type: 'NAVIGATE', screen: 'match' }),
       openCourtroom: (item) => dispatch({ type: 'OPEN_COURTROOM', caseId: item?.case_id || session.selectedCaseId }),
+      caseVote: session.caseVotes[voteKey(session.selectedMatchId, session.selectedCaseId)] || null,
+      advanceTrial: () => dispatch({ type: 'ADVANCE_TRIAL' }),
+      setTrialStage: (stage) => dispatch({ type: 'SET_TRIAL_STAGE', stage }),
+      castCaseVote: (vote) => dispatch({ type: 'CAST_CASE_VOTE', vote, caseId: session.selectedCaseId, matchVersion: session.matchVersion }),
       reviewEvidence: (timestamp) => dispatch({ type: 'REVIEW_EVIDENCE', timestamp }),
     }
   }, [session])
