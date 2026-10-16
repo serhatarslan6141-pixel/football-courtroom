@@ -13,7 +13,10 @@ Football Courtroom is a mock, AI-storytelling football experience where match mo
 
 - [backend/app/main.py](backend/app/main.py): FastAPI routes and CORS configuration
 - [backend/app/synthetic_match.py](backend/app/synthetic_match.py): synthetic generator, event sequencing, and match-state calculations
-- [frontend/src/App.jsx](frontend/src/App.jsx): landing page, courtroom placeholder, and live match replay interface
+- [frontend/src/App.jsx](frontend/src/App.jsx): scene navigation and session provider
+- [frontend/src/scenes](frontend/src/scenes): welcome, match replay, and courtroom presentation
+- [frontend/src/session](frontend/src/session): shared context, reducer, replay loading, and cancellation
+- [frontend/src/services/apiClient.js](frontend/src/services/apiClient.js): reusable backend client
 - [scripts/start-dev.sh](scripts/start-dev.sh): starts backend and frontend together
 - [scripts/stop-dev.sh](scripts/stop-dev.sh): stops the local services
 
@@ -62,9 +65,30 @@ This preserves realistic event ordering, score updates, substitutions, and synth
 - GET /api/matches/{match_id}
 - GET /api/matches/{match_id}/events
 - GET /api/matches/{match_id}/state?through_event=N
+- GET /api/matches/{match_id}/cases?through_timestamp=SECONDS
 - GET /api/matches/{match_id}/stream?speed=1.0
 
 The SSE endpoint streams events in order with a configurable replay speed and gracefully stops when the client disconnects.
+
+### Replay synchronization
+
+The frontend uses one inclusive `through_timestamp` cutoff for statistics, cases, and visible events. Events sharing a timestamp appear together. Statistics and cases are fetched in parallel and committed together; the display holds its last complete snapshot while the next one loads. Playback advances through distinct event timestamps at the selected rate, with network loading time added between steps. SSE remains available but is not used by the frontend.
+
+Both `/state` and `/cases` interpret `through_event=N` as the first N chronologically sorted events, including zero for an empty replay. This corrects the previous case-endpoint behavior that filtered original generation indexes. When both filters are supplied, both apply.
+
+Cases become eligible only when their entire observation window has elapsed: 210 seconds after a substitution, 180 after a momentum trigger, or 90 after a missed shot. `detection_timestamp` identifies the trigger; the new `available_timestamp` identifies eligibility. Case IDs derive from match, type, team, and trigger time, so they do not change when other cases qualify. These IDs differ from the previous order-based format.
+
+Entering the courtroom pauses playback at the committed match timestamp and cancels any pending advance. Returning keeps that timestamp and remains paused until Play is pressed. The session has a separate evidence-review timestamp for future evidence controls; changing it cannot move the main replay. Navigating to welcome also pauses playback.
+
+### API configuration
+
+By default the frontend requests `/api` on its own origin. Vite's development proxy forwards these requests to `http://localhost:8000`, so the usual start script still works. For a separate backend origin, set `VITE_API_BASE_URL` before starting Vite or building, for example:
+
+```bash
+VITE_API_BASE_URL=https://api.example.com npm run build
+```
+
+Production hosting must either forward `/api` to FastAPI or supply that environment variable at build time. A separate backend origin also needs the frontend origin allowed in FastAPI CORS.
 
 ## Start and stop commands
 
@@ -91,6 +115,7 @@ Run the frontend validation commands:
 
 ```bash
 cd frontend
+npm test
 npm run lint
 npm run build
 ```

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .synthetic_match import _normalize_team_key
+from .synthetic_match import _normalize_team_key, select_replay_events
 
 CASE_TYPES = (
     "substitution_impact",
@@ -138,8 +138,9 @@ def _confidence_from_delta(delta: float, sample_size: int) -> str:
     return "low"
 
 
-def _case_id(match_id: str, case_type: str, timestamp: int, team_id: str, index: int) -> str:
-    return f"{match_id}-{case_type}-{team_id}-{timestamp}-{index}"
+def _case_id(match_id: str, case_type: str, timestamp: int, team_id: str) -> str:
+    # Trigger identity must not depend on which other cases qualify at a cutoff.
+    return f"{match_id}-{case_type}-{team_id}-{timestamp}"
 
 
 def _has_meaningful_window(pre_stats: Dict[str, Any], post_stats: Dict[str, Any], *, min_pre_events: int = 3, min_post_events: int = 3, min_total_actions: int = 6) -> bool:
@@ -198,15 +199,15 @@ def _build_case(
     relevant_windows: List[Dict[str, Any]],
     limitations: List[str],
     confidence: str,
-    order: int,
     players: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     return {
-        "case_id": _case_id(match_id, case_type, timestamp, team_id, order),
+        "case_id": _case_id(match_id, case_type, timestamp, team_id),
         "match_id": match_id,
         "case_type": case_type,
         "title": title,
         "detection_timestamp": timestamp,
+        "available_timestamp": max(window["end"] for window in relevant_windows),
         "teams": {
             "team_id": team_id,
             "team_name": None,
@@ -226,7 +227,6 @@ def _detect_substitution_impact(events: Sequence[Dict[str, Any]], *, match_id: s
     ordered = _sorted_events(events)
     cases: List[Dict[str, Any]] = []
     last_seen: Dict[str, int] = {}
-    order = 0
 
     for event in ordered:
         if event.get("event_type") != "substitution":
@@ -313,11 +313,9 @@ def _detect_substitution_impact(events: Sequence[Dict[str, Any]], *, match_id: s
                 ),
                 post_stats["event_count"],
             ),
-            order=order,
             players=_summarize_event_players(ordered, [*pre_stats["event_ids"], *post_stats["event_ids"]]),
         )
         cases.append(case)
-        order += 1
     return cases
 
 
@@ -325,7 +323,6 @@ def _detect_momentum_shift(events: Sequence[Dict[str, Any]], *, match_id: str) -
     ordered = _sorted_events(events)
     cases: List[Dict[str, Any]] = []
     last_seen: Dict[str, int] = {}
-    order = 0
 
     for event in ordered:
         if event.get("event_type") not in {"goal", "possession_change"}:
@@ -401,11 +398,9 @@ def _detect_momentum_shift(events: Sequence[Dict[str, Any]], *, match_id: str) -
                 ),
                 post_stats["event_count"],
             ),
-            order=order,
             players=_summarize_event_players(ordered, [*pre_stats["event_ids"], *post_stats["event_ids"]]),
         )
         cases.append(case)
-        order += 1
     return cases
 
 
@@ -413,7 +408,6 @@ def _detect_missed_opportunity(events: Sequence[Dict[str, Any]], *, match_id: st
     ordered = _sorted_events(events)
     cases: List[Dict[str, Any]] = []
     last_seen: Dict[str, int] = {}
-    order = 0
 
     for event in ordered:
         if event.get("event_type") != "shot":
@@ -483,11 +477,9 @@ def _detect_missed_opportunity(events: Sequence[Dict[str, Any]], *, match_id: st
                 min(1.0, (pre_stats["pass_attempts"] + pre_stats["pressure_events"]) / 6.0),
                 max(pre_stats["event_count"], 1),
             ),
-            order=order,
             players=_summarize_event_players(ordered, [*pre_stats["event_ids"], event.get("event_id")]),
         )
         cases.append(case)
-        order += 1
     return cases
 
 
@@ -497,14 +489,16 @@ def detect_cases(
     through_event: Optional[int] = None,
     match_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    ordered = _sorted_events(events)
-    if through_event is not None:
-        ordered = [event for event in ordered if int((event.get("index") or 0)) <= int(through_event)]
-    if through_timestamp is not None:
-        ordered = [event for event in ordered if int((event.get("timestamp") or 0)) <= int(through_timestamp)]
+    ordered = select_replay_events(events, through_event, through_timestamp)
 
     if not ordered:
         return []
+
+    # Absence of follow-up activity is evidence only after its window has elapsed.
+    # A count-limited request cannot observe time beyond its last included event.
+    observed_through = int(ordered[-1].get("timestamp") or 0)
+    if through_timestamp is not None and through_event is None:
+        observed_through = int(through_timestamp)
 
     resolved_match_id = match_id or _infer_match_id(ordered)
 
@@ -515,5 +509,6 @@ def detect_cases(
 
     deduped: Dict[str, Dict[str, Any]] = {}
     for case in cases:
-        deduped[case["case_id"]] = case
+        if case["available_timestamp"] <= observed_through:
+            deduped[case["case_id"]] = case
     return sorted(deduped.values(), key=lambda item: (item["detection_timestamp"], item["case_type"]))

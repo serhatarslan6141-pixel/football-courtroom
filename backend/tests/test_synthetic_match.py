@@ -183,7 +183,9 @@ def test_detect_substitution_impact_case_from_event_data():
         {"event_id": "e9", "index": 8, "timestamp": 82, "team_id": "away", "event_type": "pressure_event", "metadata": {"team_name": "Harbor", "player_name": "D", "location": {"x": 25, "y": 55}, "possession_seconds": 3.4}},
     ]
 
-    cases = detect_cases(events, through_timestamp=90)
+    # The entire post-substitution observation window must have elapsed.
+    assert not any(case["case_type"] == "substitution_impact" for case in detect_cases(events, through_timestamp=239))
+    cases = detect_cases(events, through_timestamp=240)
     substitution_cases = [case for case in cases if case["case_type"] == "substitution_impact"]
     assert substitution_cases
     assert substitution_cases[0]["teams"]["team_id"] == "home"
@@ -202,7 +204,7 @@ def test_detect_momentum_shift_and_missed_opportunity_cases():
         {"event_id": "m8", "index": 7, "timestamp": 52, "team_id": "away", "event_type": "pressure_event", "metadata": {"team_name": "Harbor", "player_name": "C", "location": {"x": 28, "y": 50}, "possession_seconds": 4.5}},
     ]
 
-    cases = detect_cases(events, through_timestamp=60)
+    cases = detect_cases(events, through_timestamp=198)
     case_types = {case["case_type"] for case in cases}
     assert "momentum_shift" in case_types
     assert "missed_opportunity" in case_types
@@ -270,12 +272,16 @@ def test_api_endpoints_and_sse_response():
     state = state_response.json()["state"]
     assert "score" in state
 
-    stream_response = client.get(f"/api/matches/{match_id}/stream?speed=2.0")
+    # Exercise real SSE serialization without sleeping through the whole match.
+    start = events_response.json()["count"] - 2
+    stream_response = client.get(f"/api/matches/{match_id}/stream?speed=4.0&start={start}")
     assert stream_response.status_code == 200
     assert "text/event-stream" in stream_response.headers["content-type"]
     body = stream_response.iter_lines()
     first_line = next(body)
-    assert first_line
+    first_payload = json.loads(first_line.removeprefix("data: "))
+    assert first_payload["index"] == start
+    assert first_payload["event"] == events_response.json()["events"][start]
 
 
 @pytest.mark.parametrize("seed", [1, 2, 3, 5])

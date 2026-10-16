@@ -96,8 +96,8 @@ async def fetch_match_events(match_id: str) -> dict[str, object]:
 @app.get("/api/matches/{match_id}/state")
 async def fetch_match_state(
     match_id: str,
-    through_event: Optional[int] = Query(default=None, ge=0),
-    through_timestamp: Optional[int] = Query(default=None, ge=0),
+    through_event: Optional[int] = Query(default=None, ge=0, description="Number of chronologically sorted events to include"),
+    through_timestamp: Optional[int] = Query(default=None, ge=0, description="Inclusive replay cutoff in match seconds"),
 ) -> dict[str, object]:
     match = get_match(match_id)
     state = calculate_match_state(
@@ -111,8 +111,8 @@ async def fetch_match_state(
 @app.get("/api/matches/{match_id}/cases")
 async def fetch_match_cases(
     match_id: str,
-    through_event: Optional[int] = Query(default=None, ge=0),
-    through_timestamp: Optional[int] = Query(default=None, ge=0),
+    through_event: Optional[int] = Query(default=None, ge=0, description="Number of chronologically sorted events to include"),
+    through_timestamp: Optional[int] = Query(default=None, ge=0, description="Inclusive replay cutoff in match seconds"),
 ) -> dict[str, object]:
     match = get_match(match_id)
     cases = detect_cases(

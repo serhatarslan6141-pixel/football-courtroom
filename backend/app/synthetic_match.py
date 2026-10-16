@@ -553,11 +553,15 @@ def get_match(match_id: str) -> SyntheticMatch:
     return MATCH_LIBRARY[match_id]
 
 
-def calculate_match_state(
+def select_replay_events(
     events: Sequence[Dict[str, Any]],
     through_event: Optional[int] = None,
     through_timestamp: Optional[int] = None,
-) -> Dict[str, Any]:
+) -> List[Dict[str, Any]]:
+    """Use a chronological event count, then an inclusive timestamp boundary.
+
+    Event.index records generation order and is not a replay position.
+    """
     ordered_events = sorted(
         list(events),
         key=lambda item: (
@@ -573,7 +577,15 @@ def calculate_match_state(
         cutoff = int(through_timestamp)
         ordered_events = [event for event in ordered_events if int(event.get("timestamp", 0) or 0) <= cutoff]
 
-    event_slice = ordered_events
+    return ordered_events
+
+
+def calculate_match_state(
+    events: Sequence[Dict[str, Any]],
+    through_event: Optional[int] = None,
+    through_timestamp: Optional[int] = None,
+) -> Dict[str, Any]:
+    event_slice = select_replay_events(events, through_event, through_timestamp)
 
     if not event_slice:
         return {
