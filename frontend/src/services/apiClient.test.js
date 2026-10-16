@@ -55,3 +55,20 @@ describe('API client', () => {
     expect(formatPassRate(0.75)).toBe('75.0%')
   })
 })
+
+it('creates a match with one explicit POST using the configured origin and abort signal', async () => {
+  const metadata = { match_id: 'generated-1', seed: 1 }
+  const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => metadata }))
+  const controller = new AbortController()
+  const client = createApiClient({ baseUrl: 'https://example.test/', fetchImpl })
+  expect(await client.createMatch(controller.signal)).toEqual(metadata)
+  expect(fetchImpl).toHaveBeenCalledWith('https://example.test/api/matches', { signal: controller.signal, method: 'POST' })
+})
+
+it('loads a large catalog with embedded club colors without one request per fixture', async () => {
+  const matches = Array.from({ length: 100 }, (_, id) => ({ match_id: String(id), teams: [{ team_id: 'home', primary_color: '#123456' }] }))
+  const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ matches }) }))
+  const catalog = await createApiClient({ baseUrl: '', fetchImpl }).listMatches()
+  expect(catalog.matches).toHaveLength(100)
+  expect(fetchImpl).toHaveBeenCalledTimes(1)
+})

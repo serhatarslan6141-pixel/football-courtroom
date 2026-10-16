@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .case_detection import detect_cases
-from .synthetic_match import MATCH_LIBRARY, calculate_match_state, get_match, list_available_matches
+from .synthetic_match import calculate_match_state, create_generated_match, get_match, list_available_matches
 
 app = FastAPI(title="Football Courtroom API", version="0.1.0")
 
@@ -41,9 +41,23 @@ async def fetch_matches() -> dict[str, object]:
     return {"matches": matches, "count": len(matches), "synthetic": True}
 
 
+def require_match(match_id: str):
+    try:
+        return get_match(match_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Match not found. Generated matches last for this server session.")
+
+
+@app.post("/api/matches", status_code=201)
+def create_match() -> dict[str, object]:
+    # A synchronous route runs CPU generation in FastAPI's worker thread pool.
+    # Return setup metadata only: results and cases still require replay cutoffs.
+    return create_generated_match().as_metadata()
+
+
 @app.get("/api/matches/{match_id}")
 async def fetch_match(match_id: str) -> dict[str, object]:
-    match = get_match(match_id)
+    match = require_match(match_id)
     teams = [
         {
             "team_id": team.team_id,
@@ -80,6 +94,8 @@ async def fetch_match(match_id: str) -> dict[str, object]:
     return {
         "match_id": match.match_id,
         "seed": match.seed,
+        "generation_mode": match.generation_mode,
+        "style": match.style,
         "synthetic": True,
         "created_at": match.created_at,
         "home_team": match.home_team.name,
@@ -91,7 +107,7 @@ async def fetch_match(match_id: str) -> dict[str, object]:
 
 @app.get("/api/matches/{match_id}/events")
 async def fetch_match_events(match_id: str) -> dict[str, object]:
-    match = get_match(match_id)
+    match = require_match(match_id)
     return {"match_id": match.match_id, "count": len(match.events), "events": match.events, "synthetic": True}
 
 
@@ -101,7 +117,7 @@ async def fetch_match_state(
     through_event: Optional[int] = Query(default=None, ge=0, description="Number of chronologically sorted events to include"),
     through_timestamp: Optional[int] = Query(default=None, ge=0, description="Inclusive replay cutoff in match seconds"),
 ) -> dict[str, object]:
-    match = get_match(match_id)
+    match = require_match(match_id)
     state = calculate_match_state(
         match.events,
         through_event=through_event,
@@ -116,7 +132,7 @@ async def fetch_match_cases(
     through_event: Optional[int] = Query(default=None, ge=0, description="Number of chronologically sorted events to include"),
     through_timestamp: Optional[int] = Query(default=None, ge=0, description="Inclusive replay cutoff in match seconds"),
 ) -> dict[str, object]:
-    match = get_match(match_id)
+    match = require_match(match_id)
     cases = detect_cases(
         match.events,
         through_event=through_event,
@@ -132,7 +148,7 @@ async def stream_match_events(
     speed: float = Query(default=1.0, ge=0.25, le=4.0),
     start: int = Query(default=0, ge=0),
 ):
-    match = get_match(match_id)
+    match = require_match(match_id)
     if start >= len(match.events):
         raise HTTPException(status_code=400, detail="start must be before the end of the event list")
 

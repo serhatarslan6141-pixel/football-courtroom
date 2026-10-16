@@ -23,6 +23,9 @@ export default function MatchScene() {
     confirmFixture,
     showFixtures,
     loadMatches,
+    createMatch,
+    creationRequest,
+    creationError,
     state,
     events,
     liveEvents,
@@ -50,6 +53,9 @@ export default function MatchScene() {
         loading={matchLoading}
         error={matchError}
         onRetry={loadMatches}
+        onCreate={createMatch}
+        creating={!!creationRequest}
+        creationError={creationError}
       />
     )
 

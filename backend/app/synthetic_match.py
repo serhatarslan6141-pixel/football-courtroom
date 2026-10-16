@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+import secrets
+from threading import Lock
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -199,11 +201,21 @@ class SyntheticMatch:
     home_team: Team
     away_team: Team
     events: List[Dict[str, Any]] = field(default_factory=list)
+    generation_mode: str = "demo"
+    style: str = "balanced"
 
     def as_metadata(self) -> Dict[str, Any]:
         return {
             "match_id": self.match_id,
             "seed": self.seed,
+            "generation_mode": self.generation_mode,
+            "style": self.style,
+            "teams": [
+                {"team_id": team.team_id, "name": team.name,
+                 "short_name": team.short_name, "formation": team.formation,
+                 "primary_color": team.primary_color, "secondary_color": team.secondary_color}
+                for team in (self.home_team, self.away_team)
+            ],
             "synthetic": self.synthetic,
             "created_at": self.created_at,
             "home_team": self.home_team.name,
@@ -299,15 +311,49 @@ def _normalize_team_key(value: Any) -> Optional[str]:
     return None
 
 
-def generate_match(seed: int, match_id: Optional[str] = None) -> SyntheticMatch:
+def _rotate_starting_lineup(team: Team, rng: random.Random) -> Team:
+    """Rotate up to three outfield reserves into their actual, matching roles.
+
+    The engine uses the first eleven as starters, so both ordering and flags
+    must change together. Shirt numbers, IDs, roles and the keeper are retained.
+    """
+    starters, bench = list(team.players[:11]), list(team.players[11:])
+    candidates = [i for i, player in enumerate(bench) if player.position != "GK"]
+    rng.shuffle(candidates)
+    remaining = rng.randint(0, 3)
+    for bench_index in candidates:
+        if not remaining:
+            break
+        incoming = bench[bench_index]
+        eligible = [i for i, player in enumerate(starters) if player.position == incoming.position]
+        if not eligible:
+            continue
+        starter_index = rng.choice(eligible)
+        outgoing = starters[starter_index]
+        starters[starter_index] = replace(incoming, is_starter=True)
+        bench[bench_index] = replace(outgoing, is_starter=False)
+        remaining -= 1
+    return replace(team, players=[*starters, *bench])
+
+
+def generate_match(seed: int, match_id: Optional[str] = None, *, variety: bool = False) -> SyntheticMatch:
     from .simulation import simulate_match
 
     rng = random.Random(seed)
     pairings = [(0, 1, "balanced"), (2, 3, "pressing"), (4, 5, "counter")]
-    home_index, away_index, style = pairings[seed % len(pairings)]
+    if variety:
+        home_index, away_index = rng.sample(range(len(TEAM_CONFIG)), 2)
+        # These are the two distinct pressure behaviors supported by the engine.
+        style = rng.choice(["balanced", "pressing"])
+    else:
+        # Preserve the original RNG call order and all demo match outcomes.
+        home_index, away_index, style = pairings[seed % len(pairings)]
     home = _make_team(TEAM_CONFIG[home_index], rng, "home")
     away = _make_team(TEAM_CONFIG[away_index], rng, "away")
-    identifier = match_id or f"synthetic-{seed}"
+    if variety:
+        home = _rotate_starting_lineup(home, rng)
+        away = _rotate_starting_lineup(away, rng)
+    identifier = match_id or (f"generated-{seed}" if variety else f"synthetic-{seed}")
     return SyntheticMatch(
         match_id=identifier,
         seed=seed,
@@ -316,6 +362,8 @@ def generate_match(seed: int, match_id: Optional[str] = None) -> SyntheticMatch:
         home_team=home,
         away_team=away,
         events=simulate_match(identifier, home, away, rng, style),
+        generation_mode="varied-v1" if variety else "demo",
+        style=style,
     )
 
 
@@ -325,16 +373,39 @@ MATCH_LIBRARY: Dict[str, SyntheticMatch] = {
 }
 
 
+_MATCH_LIBRARY_LOCK = Lock()
+_PENDING_SEEDS: set[int] = set()
+
+
+def create_generated_match() -> SyntheticMatch:
+    """Create once, publish atomically, and retain the full log for this process."""
+    with _MATCH_LIBRARY_LOCK:
+        used = {match.seed for match in MATCH_LIBRARY.values()} | _PENDING_SEEDS
+        seed = secrets.randbits(53)
+        while seed == 0 or seed in used:
+            seed = secrets.randbits(53)
+        _PENDING_SEEDS.add(seed)
+    try:
+        match = generate_match(seed, variety=True)
+        match.created_at = datetime.now(timezone.utc).isoformat()
+        with _MATCH_LIBRARY_LOCK:
+            MATCH_LIBRARY[match.match_id] = match
+        return match
+    finally:
+        with _MATCH_LIBRARY_LOCK:
+            _PENDING_SEEDS.discard(seed)
+
+
 def list_available_matches() -> List[Dict[str, Any]]:
-    return [match.as_metadata() for match in MATCH_LIBRARY.values()]
+    with _MATCH_LIBRARY_LOCK:
+        matches = list(MATCH_LIBRARY.values())
+    return [match.as_metadata() for match in matches]
 
 
 def get_match(match_id: str) -> SyntheticMatch:
-    if match_id not in MATCH_LIBRARY:
-        seed = len(MATCH_LIBRARY) + 1
-        match = generate_match(seed, match_id=match_id)
-        MATCH_LIBRARY[match_id] = match
-    return MATCH_LIBRARY[match_id]
+    # Reads must not silently create a different match behind an expired ID.
+    with _MATCH_LIBRARY_LOCK:
+        return MATCH_LIBRARY[match_id]
 
 
 def select_replay_events(

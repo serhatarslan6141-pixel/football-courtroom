@@ -1,6 +1,6 @@
 # Synthetic football simulation, v2 — Step 2.6
 
-This is a reproducible, simplified football model, not tracking data or a prediction of real clubs. `generate_match(seed)` retains the three fictional fixtures and returns the same event log for the same seed and code version. Changing generator versions changes those logs.
+This is a reproducible, simplified football model, not tracking data or a prediction of real clubs. `generate_match(seed)` retains the three fictional fixtures and returns the same event log for the same seed and code version. Changing generator versions changes those logs. Opt-in `generate_match(seed, variety=True)` uses varied setup with the same simulation engine; [match-generation.md](match-generation.md) describes creation, reproduction and server-session storage.
 
 ## Possession and space
 

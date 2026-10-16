@@ -285,3 +285,33 @@ it('returns to the exact fractional match cursor after a trial', () => {
   expect(returned.isPlaying).toBe(false)
   expect(returned.snapshot.state.score).toEqual({ home: 1, away: 0 })
 })
+
+describe('match creation synchronization', () => {
+  it('selects a newly created match and invalidates the old replay and catalog responses', () => {
+    const previous = { ...ready(10), screen: 'match', fixtureConfirmed: false }
+    const requested = reduce(previous, { type: 'CREATE_MATCH_REQUEST' })
+    expect(reduce(requested, { type: 'CREATE_MATCH_REQUEST' })).toBe(requested)
+    const created = reduce(requested, { type: 'CREATE_MATCH_SUCCEEDED', version: requested.creationVersion,
+      match: { match_id: 'generated-1', home_team: 'New home', away_team: 'New away' } })
+    expect(created.selectedMatchId).toBe('generated-1')
+    expect(created.replayTimestamp).toBe(0)
+    expect(created.snapshot).toBeNull()
+    expect(created.selectedCaseId).toBe('')
+    expect(created.evidenceTimestamp).toBeNull()
+    expect(created.caseVotes).toEqual(previous.caseVotes)
+    expect(reduce(created, { type: 'MATCHES_LOADED', catalogVersion: previous.catalogVersion, matches })).toBe(created)
+    expect(reduce(created, { type: 'SNAPSHOT_LOADED', matchVersion: previous.matchVersion,
+      replayVersion: previous.replayVersion, snapshot: snapshot(10), now: 0 })).toBe(created)
+  })
+
+  it('rejects stale creation failures and permits an explicit retry after failure', () => {
+    let session = reduce({ ...ready(), screen: 'match' }, { type: 'CREATE_MATCH_REQUEST' })
+    const oldVersion = session.creationVersion
+    session = reduce(session, { type: 'CREATE_MATCH_FAILED', version: oldVersion, error: 'Unavailable' })
+    expect(session.creationError).toBe('Unavailable')
+    expect(session.snapshot).not.toBeNull()
+    session = reduce(session, { type: 'CREATE_MATCH_REQUEST' })
+    expect(session.creationError).toBe('')
+    expect(reduce(session, { type: 'CREATE_MATCH_FAILED', version: oldVersion, error: 'Old failure' })).toBe(session)
+  })
+})

@@ -8,8 +8,10 @@ from app.simulation import distance
 from app.synthetic_match import EVENT_TYPES, calculate_match_state, generate_match
 
 
-@pytest.fixture(params=[1, 2, 3, 9, 17, 42, 77, 101, 202, 303])
+@pytest.fixture(params=[1, 2, 3, 9, 17, 42, 77, 101, 202, 303, (10001, True), (10002, True)])
 def match(request):
+    if isinstance(request.param, tuple):
+        return generate_match(request.param[0], variety=request.param[1])
     return generate_match(request.param)
 
 

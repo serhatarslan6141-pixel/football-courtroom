@@ -4,8 +4,8 @@ export function createApiClient({
 } = {}) {
   const base = baseUrl.replace(/\/+$/, '')
 
-  async function get(path, signal) {
-    const response = await fetchImpl(`${base}${path}`, { signal })
+  async function request(path, signal, options = {}) {
+    const response = await fetchImpl(`${base}${path}`, { signal, ...options })
     if (!response.ok) {
       let message = `Request failed with status ${response.status}`
       try {
@@ -21,25 +21,28 @@ export function createApiClient({
 
   return {
     async listMatches(signal) {
-      const catalog = await get('/api/matches', signal)
-      // The catalog contains names; fixture tiles also need the actual club colors.
+      const catalog = await request('/api/matches', signal)
+      // Current catalogs embed club colors; older name-only responses still work.
       const matches = await Promise.all((catalog.matches || []).map(async (match) => ({
-        ...match, ...await get(matchPath(match.match_id), signal),
+        ...match, ...(match.teams?.length ? {} : await request(matchPath(match.match_id), signal)),
       })))
       return { ...catalog, matches }
     },
+    createMatch(signal) {
+      return request('/api/matches', signal, { method: 'POST' })
+    },
     async loadMatch(id, signal) {
       const [matchData, payload] = await Promise.all([
-        get(matchPath(id), signal),
-        get(`${matchPath(id)}/events`, signal),
+        request(matchPath(id), signal),
+        request(`${matchPath(id)}/events`, signal),
       ])
       return { matchData, events: payload.events || [] }
     },
     async loadSnapshot(id, timestamp, signal) {
       const query = `through_timestamp=${timestamp}`
       const [statePayload, casePayload] = await Promise.all([
-        get(`${matchPath(id)}/state?${query}`, signal),
-        get(`${matchPath(id)}/cases?${query}`, signal),
+        request(`${matchPath(id)}/state?${query}`, signal),
+        request(`${matchPath(id)}/cases?${query}`, signal),
       ])
       return { timestamp, state: statePayload.state, cases: casePayload.cases || [] }
     },

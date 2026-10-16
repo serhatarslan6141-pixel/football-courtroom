@@ -1309,3 +1309,19 @@
     gap: 5px;
   }
 }
+/* New fixtures use the same broadcast lobby; the catalog stays bounded. */
+.fixture-section-heading > div { display: flex; align-items: baseline; gap: 14px; }
+.fixture-section-heading > div > span { font-size: 10px; color: #82968b; }
+.fixture-create { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid #bda15e80; border-radius: 2px; background: #d8b86d0c; color: #e4c987; font-size: 12px; }
+.fixture-create > span { font-size: 19px; line-height: 1; }
+.fixture-create:hover:not(:disabled) { background: #d8b86d1c; border-color: #d8b86d; }
+.fixture-pagination { display: flex; align-items: center; justify-content: center; gap: 22px; padding-top: 18px; }
+.fixture-pagination button { background: none; border: 0; padding: 8px; color: #bcc7c0; font-size: 11px; }
+.fixture-pagination > span, .fixture-creation-status { font-size: 10px; color: #a8b6ad; }
+.fixture-creation-status { margin: 15px 0 0; }
+@media (max-width: 600px) {
+  .fixture-section-heading { align-items: flex-start; gap: 12px; }
+  .fixture-section-heading > div { flex-direction: column; gap: 4px; }
+  .fixture-create { font-size: 10px; padding: 9px 10px; gap: 6px; }
+  .fixture-pagination { gap: 12px; }
+}

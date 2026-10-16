@@ -5,6 +5,9 @@ export const initialSession = {
   matches: [],
   catalogStatus: 'loading',
   catalogVersion: 0,
+  creationVersion: 0,
+  creationRequest: null,
+  creationError: '',
   selectedMatchId: '',
   fixtureConfirmed: false,
   matchVersion: 0,
@@ -37,6 +40,9 @@ function selectMatch(session, id) {
     caseVotes: session.caseVotes,
     catalogStatus: session.catalogStatus,
     catalogVersion: session.catalogVersion,
+    creationVersion: session.creationVersion,
+    creationRequest: session.creationRequest,
+    creationError: session.creationError,
     selectedMatchId: id,
     matchVersion: session.matchVersion + 1,
     replayVersion: session.replayVersion + 1,
@@ -75,6 +81,24 @@ export function sessionReducer(session, action) {
     case 'CATALOG_FAILED':
       if (action.catalogVersion !== session.catalogVersion) return session
       return { ...session, catalogStatus: 'error', error: action.error, isPlaying: false }
+    case 'CREATE_MATCH_REQUEST':
+      if (session.screen !== 'match' || session.fixtureConfirmed || session.creationRequest) return session
+      return { ...session, creationVersion: session.creationVersion + 1, creationError: '',
+        creationRequest: { version: session.creationVersion + 1, matchVersion: session.matchVersion } }
+    case 'CREATE_MATCH_SUCCEEDED': {
+      if (action.version !== session.creationRequest?.version) return session
+      const shouldSelect = session.screen === 'match' && !session.fixtureConfirmed
+        && session.matchVersion === session.creationRequest.matchVersion
+      const next = { ...session, creationRequest: null, creationError: '',
+        matches: [...session.matches.filter((match) => match.match_id !== action.match.match_id), action.match],
+        // Invalidate any catalog read started before the new match existed.
+        catalogVersion: session.catalogVersion + 1,
+      }
+      return shouldSelect ? selectMatch(next, action.match.match_id) : next
+    }
+    case 'CREATE_MATCH_FAILED':
+      if (action.version !== session.creationRequest?.version) return session
+      return { ...session, creationRequest: null, creationError: action.error }
     case 'SELECT_MATCH':
       if (action.id === session.selectedMatchId) return session
       return selectMatch(session, action.id)

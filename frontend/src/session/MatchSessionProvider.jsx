@@ -7,7 +7,7 @@ import { initialSession, sessionReducer, visibleEvents } from './sessionReducer.
 export function MatchSessionProvider({ children, api = apiClient }) {
   const [session, dispatch] = useReducer(sessionReducer, initialSession)
   const { catalogVersion, selectedMatchId, matchVersion, replayVersion, pendingTimestamp,
-    dataStatus, screen, isPlaying, replaySpeed, caseNotifications } = session
+    dataStatus, screen, isPlaying, replaySpeed, caseNotifications, creationRequest } = session
 
   useEffect(() => {
     const controller = new AbortController()
@@ -18,6 +18,17 @@ export function MatchSessionProvider({ children, api = apiClient }) {
     })
     return () => controller.abort()
   }, [api, catalogVersion])
+
+  useEffect(() => {
+    if (!creationRequest) return
+    const controller = new AbortController()
+    api.createMatch(controller.signal).then((match) => {
+      if (!controller.signal.aborted) dispatch({ type: 'CREATE_MATCH_SUCCEEDED', version: creationRequest.version, match })
+    }).catch((error) => {
+      if (!controller.signal.aborted) dispatch({ type: 'CREATE_MATCH_FAILED', version: creationRequest.version, error: error.message })
+    })
+    return () => controller.abort()
+  }, [api, creationRequest])
 
   useEffect(() => {
     if (!selectedMatchId) return
@@ -81,6 +92,7 @@ export function MatchSessionProvider({ children, api = apiClient }) {
       matchLoading: !session.error && (session.catalogStatus === 'loading' || session.dataStatus === 'loading'
         || (session.dataStatus === 'ready' && !session.snapshot)),
       matchError: session.error,
+      createMatch: () => dispatch({ type: 'CREATE_MATCH_REQUEST' }),
       loadMatches: () => dispatch({ type: 'RETRY' }),
       setSelectedMatchId: (id) => dispatch({ type: 'SELECT_MATCH', id }),
       confirmFixture: () => dispatch({ type: 'CONFIRM_FIXTURE' }),

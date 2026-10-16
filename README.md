@@ -67,6 +67,7 @@ This preserves realistic event ordering, score updates, substitutions, and synth
 
 - GET /health
 - GET /api/matches
+- POST /api/matches (create a new server-session match)
 - GET /api/matches/{match_id}
 - GET /api/matches/{match_id}/events
 - GET /api/matches/{match_id}/state?through_event=N
@@ -74,6 +75,10 @@ This preserves realistic event ordering, score updates, substitutions, and synth
 - GET /api/matches/{match_id}/stream?speed=1.0
 
 The SSE endpoint streams events in order with a configurable replay speed and gracefully stops when the client disconnects.
+
+### Match variety
+
+The original three fixtures remain reproducible demos with seeds 101, 202 and 303. Use **Create a new match** in the fixture picker for a fresh seeded match using the same football engine, varied club pairings, compatible lineup rotations and supported playing styles. New matches remain available through replays and browser refreshes for the current backend process; restarting the backend clears them. Saved seeds and `generation_mode` support debugging reproduction. See [match generation](docs/match-generation.md) for the API, storage lifetime, validation and scaling limits.
 
 ### Replay synchronization
 
