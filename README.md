@@ -151,3 +151,12 @@ npm run build
 - All match data is synthetic and intentionally fictional.
 - The generator produces consistent events from a seed, making it easy to reproduce scenarios and debug replay logic.
 - The architecture remains modular so future phases can add agent logic, richer event interpretation, and courtroom verdict generation without a rewrite.
+
+## Microsoft Foundry — Phase 4A
+
+Optional backend connectivity is available through a controlled CLI probe;
+normal startup and the courtroom remain deterministic and need no credentials.
+See [Foundry setup and one-request test](docs/foundry.md) and [.env.example](.env.example)
+for backend-only credentials, disabled-by-default live calls, local daily attempt
+limits and the future Microsoft Agent Framework boundary. No orchestration is
+implemented in this phase.
