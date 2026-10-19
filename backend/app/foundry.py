@@ -1,4 +1,4 @@
-"""Opt-in Foundry connection boundary. Never imported by simulation or routes."""
+"""Secure opt-in Foundry settings, request budget, and explicit Phase 4A probe."""
 from __future__ import annotations
 
 import asyncio

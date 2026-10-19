@@ -73,6 +73,7 @@ This preserves realistic event ordering, score updates, substitutions, and synth
 - GET /api/matches/{match_id}/state?through_event=N
 - GET /api/matches/{match_id}/cases?through_timestamp=SECONDS
 - GET /api/matches/{match_id}/stream?speed=1.0
+- POST /api/matches/{match_id}/cases/{case_id}/courtroom (Phase 4B; deterministic fallback by default)
 
 The SSE endpoint streams events in order with a configurable replay speed and gracefully stops when the client disconnects.
 
@@ -160,3 +161,18 @@ See [Foundry setup and one-request test](docs/foundry.md) and [.env.example](.en
 for backend-only credentials, disabled-by-default live calls, local daily attempt
 limits and the future Microsoft Agent Framework boundary. No orchestration is
 implemented in this phase.
+
+## Microsoft Agent Framework — Phase 4B backend
+
+The optional backend now implements four real agents in a sequential framework
+workflow: Evidence → Prosecution → Defense → Judge. It validates citations and
+observations against a fixed synthetic evidence window, retains deterministic
+fallback, and protects each model request with the existing daily budget.
+Successful trials are cached; concurrent or failed trials are not automatically
+regenerated. The frontend still uses recorded-evidence assessments.
+
+See [Phase 4B architecture, API, offline tests and controlled opt-in](docs/phase4b.md).
+The agent dependencies require Python 3.10+; the full implementation was tested
+in a separate Python 3.12 environment. Base simulation and fallback remain
+compatible with the original environment. Live trials require both backend
+enable switches and an explicit `allow_live: true` request; all default to off.

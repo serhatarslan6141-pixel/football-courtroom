@@ -16,20 +16,19 @@ no dated `AZURE_OPENAI_API_VERSION` and no Foundry project endpoint. The resourc
 endpoint and deployment name from Foundry are sufficient. GlobalStandard is an
 Azure deployment setting, not a client parameter.
 
-The installed SDK signatures and request serialization are verified with real
-SDK objects over mocked HTTP transport in the tests. Microsoft Agent Framework
-exposes a Responses client accepting an `AsyncOpenAI` client, providing a path
-for the next phase. The framework itself is deliberately not installed yet.
-Future orchestration must retain the usage checks around **every** model/tool
-turn; passing an unguarded raw client to a framework would bypass these checks.
-Framework version and Python requirements must be verified in that phase (the
-current project environment is Python 3.9).
+The SDK signatures and request serialization are verified over mocked HTTP.
+[Phase 4B](phase4b.md) adds an optional Microsoft Agent Framework workflow with
+four real agents, retaining the same deployment and budget. Its pinned current
+Responses provider is `agent_framework.openai.OpenAIChatClient`, accepting the
+existing `AsyncOpenAI` client. The older `OpenAIResponsesClient` import is no
+longer exported by the pinned version. Agent execution requires Python 3.10+;
+the original Python 3.9 environment still supports Phase 4A and fallback.
 
 References checked during implementation:
 
 - [Microsoft: Azure OpenAI v1 API](https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle)
 - [Microsoft: Responses API, model and region support](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses)
-- [Microsoft: Agent Framework OpenAI Responses client](https://learn.microsoft.com/en-us/python/api/agent-framework-core/agent_framework.openai.openairesponsesclient?view=agent-framework-python-latest)
+- [Microsoft: Agent Framework OpenAI provider](https://learn.microsoft.com/en-us/agent-framework/integrations/by-component/model-providers/openai)
 
 ## Local setup
 
@@ -73,8 +72,9 @@ Safety settings in the same file:
 
 `.env` is loaded **only by the explicit CLI**, from the project root, without
 variable interpolation or overriding existing shell variables. Existing exported
-values take precedence. FastAPI doesn't read it because its routes do not use
-AI yet. Never prefix backend secrets with `VITE_`; Vite exposes those values.
+values take precedence. FastAPI does not automatically load `.env`; Phase 4B
+live configuration must be explicitly loaded into the backend process. Never
+prefix backend secrets with `VITE_`; Vite exposes those values.
 `.env`, `.env.*` and runtime usage files are ignored by Git; `.env.example` is
 explicitly included and contains no secret.
 

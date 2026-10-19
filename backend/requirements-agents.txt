@@ -1,0 +1,4 @@
+# Phase 4B requires Python >=3.10 (verified using Python 3.12).
+-r requirements.txt
+agent-framework-core==1.22.0
+agent-framework-openai==1.17.0
