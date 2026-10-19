@@ -28,12 +28,12 @@ Football Courtroom is a mock, AI-storytelling football experience where match mo
 ## Local setup
 
 1. Open a terminal in the project root.
-2. Create and activate the Python environment:
+2. Install Python 3.12+ and create the framework-capable backend environment:
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
+   python3.12 -m venv .venv/phase4b
+   source .venv/phase4b/bin/activate
    python -m pip install --upgrade pip
-   python -m pip install -r backend/requirements.txt
+   python -m pip install -r backend/requirements-agents.txt
    ```
 3. Install the frontend dependencies:
    ```bash
@@ -47,6 +47,12 @@ Football Courtroom is a mock, AI-storytelling football experience where match mo
    ```
 5. Open the frontend in the browser at http://localhost:5173.
 6. Check the backend health endpoint at http://localhost:8000/health.
+
+For backend-only development, run `./scripts/start-backend.sh` from the project
+root. Both launchers prefer `.venv/phase4b`, verify Python 3.12+ and the pinned
+framework dependencies, and refuse to silently use a legacy Python 3.9 runtime.
+Use `./scripts/start-dev.sh --check` to verify runtime selection without starting
+either service. Neither launcher loads `.env` or enables inference.
 
 ## Match engine usage
 
@@ -133,9 +139,7 @@ Votes remain in the current session, scoped to the fixture and case. Evidence pl
 Run backend tests from the project root:
 
 ```bash
-source .venv/bin/activate
-cd backend
-pytest
+PYTHONPATH=backend .venv/phase4b/bin/python -m pytest -q backend/tests
 ```
 
 Run the frontend validation commands:

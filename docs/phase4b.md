@@ -29,6 +29,26 @@ Base startup, Phase 4A and deterministic fallback need only `requirements.txt`.
 If the framework is missing, an opted-in trial safely reports
 `framework_unavailable` without making a request.
 
+The development launchers require Python 3.12+ and verify the pinned framework,
+SDK, FastAPI and Uvicorn versions before starting anything. They prefer
+`.venv/phase4b/bin/python`, then accept `.venv/bin/python` only if it also passes
+these checks. An explicit `FOOTBALL_BACKEND_PYTHON` path must pass validation;
+there is no silent fallback from an invalid override and no implicit package
+installation. A legacy Python 3.9 environment is never used by these launchers.
+
+From the project root, start the backend in the foreground:
+
+```bash
+./scripts/start-backend.sh
+```
+
+It serves `http://127.0.0.1:8000`; Ctrl+C stops it. The equivalent explicit command
+is `.venv/phase4b/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000`.
+`./scripts/start-dev.sh` uses the same resolver to launch both services;
+`./scripts/start-dev.sh --check` validates the selected runtime without starting
+services, stopping processes or writing runtime files. These commands do not
+load `.env` or enable AI. The existing opt-in gates still apply.
+
 Current official references, checked against the installed packages:
 
 - [Microsoft: OpenAI Responses provider and current Python names](https://learn.microsoft.com/en-us/agent-framework/integrations/by-component/model-providers/openai)
@@ -184,15 +204,21 @@ The server never automatically reads `.env`. Live trials require all of:
 | --- | --- | --- |
 | `COURTROOM_LIVE_ENABLED` | false | Additional trial kill switch |
 | `COURTROOM_MAX_MODEL_CALLS` | 4 | Hard per-trial limit, accepted range 0–4 |
-| `COURTROOM_MAX_OUTPUT_TOKENS` | 256 | Additional per-call limit, range 16–256 |
+| `COURTROOM_MAX_OUTPUT_TOKENS` | 1536 | Shared per-call output ceiling, range 32–2048 |
+| `COURTROOM_EVIDENCE_MAX_OUTPUT_TOKENS` | 768 | Evidence output budget, range 32–2048 |
+| `COURTROOM_PROSECUTION_MAX_OUTPUT_TOKENS` | 1024 | Prosecution output budget, range 32–2048 |
+| `COURTROOM_DEFENSE_MAX_OUTPUT_TOKENS` | 1024 | Defense output budget, range 32–2048 |
+| `COURTROOM_JUDGE_MAX_OUTPUT_TOKENS` | 1536 | Judge output budget, range 32–2048 |
 | `COURTROOM_MAX_INPUT_BYTES` | 128000 | Complete serialized model request ceiling, range 1024–128000 |
 
-The effective output cap is the **minimum** of the courtroom setting and
-`FOUNDRY_MAX_OUTPUT_TOKENS` (which still defaults to 32 for the tiny Phase 4A
-probe). A future approved trial should use 256 for the global cap in that
-process. A small ceiling can truncate structured output and cause fallback;
-the system does not silently raise it. The byte cap is a conservative input
-size bound, not a tokenizer-exact monetary limit.
+Each call uses the **minimum** of the shared courtroom ceiling and its role's
+budget. Defaults allow up to 4,352 output tokens across a complete trial, with
+no retries. `FOUNDRY_MAX_OUTPUT_TOKENS=32` remains the Phase 4A probe's limit and
+no longer truncates structured courtroom responses. User-supplied courtroom
+ceilings are still respected, including a deliberately small cap; incomplete
+output produces fallback without a repair call. Role budgets are included in
+the cache identity and rechecked at the HTTP boundary. The byte cap is a
+conservative input size bound, not a tokenizer-exact monetary limit.
 
 Every physical model attempt passes a request hook that rechecks switches,
 configuration, route, deployment, tokens, tools and the existing
@@ -236,6 +262,13 @@ switches, API attribution and existing endpoint compatibility. Running the suite
 with only the original environment skips the framework-specific module; use the
 Python 3.12 environment for full verification.
 
+The integration-readiness tests also start an actual local Uvicorn process with
+credentials removed and live switches disabled, then exercise its health and
+courtroom endpoints. Launcher tests verify interpreter selection and reject old
+Python or missing dependencies. Mocked API tests select match/case IDs through
+the real registry endpoints and verify complete handoffs, cached repeats,
+zero-budget behavior and citation-safe fallback.
+
 To inspect a real response contract safely without running a server or AI:
 
 ```python
@@ -270,7 +303,6 @@ load_dotenv(Path.cwd() / '.env', override=False, interpolate=False)
 os.environ['FOUNDRY_LIVE_ENABLED'] = 'true'
 os.environ['COURTROOM_LIVE_ENABLED'] = 'true'
 os.environ['FOUNDRY_MAX_RETRIES'] = '0'
-os.environ['FOUNDRY_MAX_OUTPUT_TOKENS'] = '256'
 os.environ['COURTROOM_MAX_MODEL_CALLS'] = '4'
 uvicorn.run('app.main:app', host='127.0.0.1', port=8000)
 PY
@@ -290,8 +322,18 @@ automatic eviction. The existing server-session lifetime of generated matches
 is unchanged. This local demo endpoint has no authentication or public-service
 rate limiting and should not be exposed as a publicly enabled billable service.
 Natural-language correctness and a full live four-agent response remain
-unverified. The tight token limit favors brief submissions and may need a later
-explicitly reviewed increase for richer arguments.
+unverified. Conservative role budgets accommodate useful structured responses,
+but particularly verbose model output can still exceed them and trigger fallback.
+
+## Integration-readiness fixes
+
+The review corrected development scripts that previously selected the Python 3.9
+base environment and installed only Phase 4A dependencies. Both now use the
+verified runtime resolver; a backend-only launcher avoids starting the frontend.
+It also separated the 32-token connection probe from the four role-specific
+courtroom budgets and changed the configuration version, so old short-response
+cache entries are not reused under the new policy. No `.env` edits, frontend
+source changes, live inference or deployment were needed.
 
 Phase 4C should adapt this response to the existing `TrialPresentation` contract,
 add explicit user-triggered trial loading and source/error/cache disclosure,

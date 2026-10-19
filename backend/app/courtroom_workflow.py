@@ -17,7 +17,7 @@ import httpx
 from openai import AsyncOpenAI, APIStatusError
 from pydantic import ValidationError
 
-from .courtroom import ROLES, TrialState
+from .courtroom import ROLES, TrialConfig, TrialState
 from .courtroom_evidence import InvalidAgentOutput, digest, validate_submission
 from .courtroom_models import AgentTrace, Argument, EvidenceSubmission, Ruling
 from .foundry import FoundrySettings, FoundryUnavailable
@@ -102,8 +102,11 @@ async def execute_trial(state, settings, config, budget, transport=None):
             stop('live_disabled')
         try:
             current = FoundrySettings.from_env()
+            current_trial = TrialConfig.from_env()
         except FoundryUnavailable:
             stop('configuration_unavailable')
+        if state.api_attempts >= current_trial.max_calls:
+            stop('trial_call_limit')
         if (current.base_url != settings.base_url or current.api_key != settings.api_key
                 or current.deployment != settings.deployment):
             stop('configuration_changed')
@@ -113,7 +116,8 @@ async def execute_trial(state, settings, config, budget, transport=None):
         if (request.method != 'POST' or str(request.url) != settings.base_url + 'responses'
                 or body.get('model') != settings.deployment or body.get('store') is not False
                 or body.get('tools') or body.get('background')
-                or not 0 < body.get('max_output_tokens', 0) <= min(config.output_tokens, current.output_tokens)):
+                or not 0 < body.get('max_output_tokens', 0) <= min(
+                    config.output_tokens_for(state.active_role), current_trial.output_tokens_for(state.active_role))):
             stop('unsafe_model_request_blocked')
         try:
             budget.reserve(min(settings.daily_cap, current.daily_cap))
@@ -151,7 +155,7 @@ async def execute_trial(state, settings, config, budget, transport=None):
                 name=f'FootballCourtroom_{role}',
                 instructions=f'ROLE={role}\n{COMMON_INSTRUCTIONS}\n{ROLE_INSTRUCTIONS[role]}',
                 default_options={'response_format': SCHEMAS[role], 'store': False,
-                                 'max_tokens': config.output_tokens, 'tool_choice': 'none'},
+                                 'max_tokens': config.output_tokens_for(role), 'tool_choice': 'none'},
             ) for role in ROLES}
 
             class ValidatedStage(Executor):

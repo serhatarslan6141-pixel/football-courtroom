@@ -66,7 +66,7 @@ Safety settings in the same file:
 | --- | --- | --- |
 | `FOUNDRY_LIVE_ENABLED` | `false` | Only `true` enables calls |
 | `FOUNDRY_DAILY_REQUEST_CAP` | `10` | Integer 0–100; zero blocks calls |
-| `FOUNDRY_MAX_OUTPUT_TOKENS` | `32` | Integer 16–256 |
+| `FOUNDRY_MAX_OUTPUT_TOKENS` | `32` | Phase 4A probe only; integer 16–256 |
 | `FOUNDRY_TIMEOUT_SECONDS` | `30` | Integer 1–120; whole attempt deadline |
 | `FOUNDRY_MAX_RETRIES` | `0` | Integer 0–2 additional attempts; CLI always overrides to zero |
 

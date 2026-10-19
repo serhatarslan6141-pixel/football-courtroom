@@ -17,24 +17,32 @@ from .courtroom_evidence import InvalidAgentOutput, build_evidence, digest, fall
 from .courtroom_models import AgentTrace, TrialResult, VerifiedEvidence
 from .foundry import DailyRequestBudget, FoundrySettings, FoundryUnavailable, ROOT, _integer
 
-CONFIGURATION_VERSION = 'courtroom-v1-af-core1.22.0-openai1.17.0'
+CONFIGURATION_VERSION = 'courtroom-v2-agent-token-budgets-af-core1.22.0-openai1.17.0'
 ROLES = ('evidence', 'prosecution', 'defense', 'judge')
+DEFAULT_AGENT_OUTPUT_TOKENS = {'evidence': 768, 'prosecution': 1024, 'defense': 1024, 'judge': 1536}
 
 
 @dataclass(frozen=True)
 class TrialConfig:
     max_calls: int
     output_tokens: int
+    agent_output_tokens: dict[str, int]
     max_input_bytes: int
 
     @classmethod
-    def from_env(cls, foundry: FoundrySettings):
+    def from_env(cls):
         return cls(
             max_calls=_integer('COURTROOM_MAX_MODEL_CALLS', 4, 0, 4),
-            output_tokens=min(foundry.output_tokens,
-                              _integer('COURTROOM_MAX_OUTPUT_TOKENS', 256, 16, 256)),
+            # FOUNDRY_MAX_OUTPUT_TOKENS belongs to the tiny Phase 4A probe.
+            # Courtroom JSON needs its own explicit, bounded output budget.
+            output_tokens=_integer('COURTROOM_MAX_OUTPUT_TOKENS', 1536, 32, 2048),
+            agent_output_tokens={role: _integer(f'COURTROOM_{role.upper()}_MAX_OUTPUT_TOKENS',
+                default, 32, 2048) for role, default in DEFAULT_AGENT_OUTPUT_TOKENS.items()},
             max_input_bytes=_integer('COURTROOM_MAX_INPUT_BYTES', 128000, 1024, 128000),
         )
+
+    def output_tokens_for(self, role: str) -> int:
+        return min(self.output_tokens, self.agent_output_tokens[role])
 
 
 @dataclass
@@ -124,13 +132,14 @@ class TrialService:
             return fallback(evidence, 'live_disabled')
         try:
             settings = FoundrySettings.from_env()
-            config = TrialConfig.from_env(settings)
+            config = TrialConfig.from_env()
         except FoundryUnavailable:
             return fallback(evidence, 'configuration_unavailable')
         key = digest({
             'evidence': evidence.model_dump(), 'configuration_version': CONFIGURATION_VERSION,
             'deployment': settings.deployment, 'resource': settings.base_url,
             'output_tokens': config.output_tokens, 'max_calls': config.max_calls,
+            'agent_output_tokens': config.agent_output_tokens,
             'max_input_bytes': config.max_input_bytes,
         })
         state = TrialState(evidence)

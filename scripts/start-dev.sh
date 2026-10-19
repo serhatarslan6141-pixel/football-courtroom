@@ -2,7 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV_DIR="$ROOT_DIR/.venv"
+BACKEND_PYTHON="$(bash "$ROOT_DIR/scripts/backend-python.sh")"
+if [ "${1:-}" = '--check' ]; then
+  echo "Backend interpreter: $BACKEND_PYTHON"
+  "$BACKEND_PYTHON" --version
+  exit 0
+fi
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 LOG_DIR="$ROOT_DIR/.logs"
@@ -31,14 +36,7 @@ if command -v lsof >/dev/null 2>&1; then
   fi
 fi
 
-if [ ! -d "$VENV_DIR" ]; then
-  echo "Creating Python virtual environment at $VENV_DIR"
-  python3 -m venv "$VENV_DIR"
-fi
-
-"$VENV_DIR/bin/python" -m pip install --quiet -r "$BACKEND_DIR/requirements.txt"
-
-nohup "$VENV_DIR/bin/python" -m uvicorn app.main:app --app-dir "$BACKEND_DIR" --host 0.0.0.0 --port 8000 > "$LOG_DIR/backend.log" 2>&1 &
+nohup "$BACKEND_PYTHON" -m uvicorn app.main:app --app-dir "$BACKEND_DIR" --host 0.0.0.0 --port 8000 > "$LOG_DIR/backend.log" 2>&1 &
 printf '%s\n' $! > "$LOG_DIR/backend.pid"
 
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then

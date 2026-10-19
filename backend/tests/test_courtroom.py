@@ -14,7 +14,7 @@ from app.case_detection import detect_cases
 from app.courtroom_evidence import build_evidence, validate_submission, InvalidAgentOutput
 from app.courtroom_models import EvidenceSubmission
 from app.foundry import DailyRequestBudget
-from app.synthetic_match import generate_match
+from app.synthetic_match import generate_match, get_match
 
 pytest.importorskip('agent_framework', reason='Full Phase 4B tests require requirements-agents.txt and Python >=3.10')
 
@@ -139,7 +139,7 @@ def test_real_framework_order_handoffs_shared_state(enabled, wired, match, evide
     assert [item.handoff_to for item in result.trace] == ['prosecution', 'defense', 'judge', None]
     for index, (role, body) in enumerate(wire.calls):
         assert body['model'] == 'gpt-4.1-mini'
-        assert body['max_output_tokens'] == 256
+        assert body['max_output_tokens'] == courtroom.DEFAULT_AGENT_OUTPUT_TOKENS[role]
         assert body['store'] is False
         assert not body.get('tools')
         assert body['text']['format']['type'] == 'json_schema'
@@ -298,7 +298,7 @@ def test_cache_identity_includes_seed_evidence_and_config(enabled, wired, match,
     service, wire = wired
     first = run(service, match, evidence)
     changed_seed = run(service, replace(match, seed=match.seed + 1), evidence)
-    monkeypatch.setenv('FOUNDRY_MAX_OUTPUT_TOKENS', '128')
+    monkeypatch.setenv('COURTROOM_MAX_OUTPUT_TOKENS', '128')
     changed_config = run(service, match, evidence)
     assert len({first.cache_key, changed_seed.cache_key, changed_config.cache_key}) == 3
 
@@ -313,12 +313,13 @@ def test_changed_evidence_invalidates_cache(enabled, wired, match, evidence):
     assert len(wire.calls) == 8
 
 
-def test_global_token_limit_and_input_size_limit(enabled, wired, match, evidence, monkeypatch):
+def test_probe_token_limit_does_not_truncate_trials(enabled, wired, match, evidence, monkeypatch):
     service, wire = wired
     monkeypatch.setenv('FOUNDRY_MAX_OUTPUT_TOKENS', '32')
     result = run(service, match, evidence)
     assert result.source == 'live_ai'
-    assert all(body['max_output_tokens'] == 32 for _, body in wire.calls)
+    assert all(body['max_output_tokens'] == courtroom.DEFAULT_AGENT_OUTPUT_TOKENS[role]
+               for role, body in wire.calls)
     monkeypatch.setenv('COURTROOM_MAX_INPUT_BYTES', '1024')
     again = run(service, match, evidence)
     assert again.error_category == 'input_limit'
@@ -506,3 +507,85 @@ def test_failed_provider_debug_logs_do_not_escape(enabled, wired, match, evidenc
     assert result.error_category == 'authentication_or_access_denied'
     assert 'fake-secret-never-output' not in caplog.text
     assert 'Authorization' not in caplog.text
+
+
+@pytest.mark.parametrize('role', courtroom.ROLES)
+def test_role_token_limits_and_shared_ceiling(enabled, wired, match, evidence, monkeypatch, role):
+    service, wire = wired
+    monkeypatch.setenv('COURTROOM_MAX_OUTPUT_TOKENS', '900')
+    monkeypatch.setenv(f'COURTROOM_{role.upper()}_MAX_OUTPUT_TOKENS', '800')
+    result = run(service, match, evidence)
+    assert result.source == 'live_ai'
+    for name, body in wire.calls:
+        expected = 800 if name == role else min(900, courtroom.DEFAULT_AGENT_OUTPUT_TOKENS[name])
+        assert body['max_output_tokens'] == expected
+
+
+def test_role_budget_change_invalidates_cache(enabled, wired, match, evidence, monkeypatch):
+    service, wire = wired
+    first = run(service, match, evidence)
+    monkeypatch.setenv('COURTROOM_JUDGE_MAX_OUTPUT_TOKENS', '1024')
+    second = run(service, match, evidence)
+    assert first.cache_key != second.cache_key
+    assert len(wire.calls) == 8
+    assert wire.calls[-1][1]['max_output_tokens'] == 1024
+
+
+@pytest.mark.parametrize('name', ['COURTROOM_MAX_OUTPUT_TOKENS', *[
+    f'COURTROOM_{role.upper()}_MAX_OUTPUT_TOKENS' for role in courtroom.ROLES]])
+def test_unbounded_token_settings_rejected(enabled, wired, match, evidence, monkeypatch, name):
+    service, wire = wired
+    monkeypatch.setenv(name, '100000')
+    result = run(service, match, evidence)
+    assert result.error_category == 'configuration_unavailable'
+    assert wire.calls == []
+
+
+@pytest.mark.parametrize('invalid_citation', [False, True])
+def test_registered_match_api_round_trip_and_repeated_requests(enabled, monkeypatch, tmp_path, invalid_citation):
+    client = TestClient(main.app)
+    # Use the actual match registry and case endpoints, without replacing
+    # require_match or inventing a request-only controversy fixture.
+    match_id = client.get('/api/matches').json()['matches'][1]['match_id']
+    cases = client.get(f'/api/matches/{match_id}/cases?through_timestamp=5400').json()['cases']
+    case = cases[0]
+    evidence = build_evidence(get_match(match_id), case['case_id'], 5400)
+    wire = MockWire(evidence)
+    if invalid_citation:
+        wire.outputs['evidence']['event_ids'].append('invented-event')
+    service = courtroom.TrialService(courtroom.TrialCache(tmp_path / 'cache'),
+        DailyRequestBudget(tmp_path / 'usage.json'), httpx.MockTransport(wire.handle))
+    monkeypatch.setattr(main, 'trial_service', service)
+    path = f"/api/matches/{match_id}/cases/{case['case_id']}/courtroom"
+    request = {'through_timestamp': 5400, 'allow_live': True}
+    first = client.post(path, json=request)
+    assert first.status_code == 200
+    data = first.json()
+    assert data['evidence'] == evidence.model_dump()
+    assert not any(event['event_id'] == 'invented-event' for event in data['evidence']['events'])
+    if invalid_citation:
+        assert data['source'] == 'deterministic_fallback'
+        assert data['evidence_agent'] is None
+        assert data['error_category'] == 'invalid_agent_output'
+        repeated = client.post(path, json=request).json()
+        assert repeated['error_category'] == 'previous_trial_failed_or_incomplete'
+        assert repeated['api_attempts'] == 0
+        assert len(wire.calls) == 1
+    else:
+        assert data['source'] == 'live_ai'
+        assert [item['agent'] for item in data['trace']] == list(courtroom.ROLES)
+        assert [item['handoff_to'] for item in data['trace']] == ['prosecution', 'defense', 'judge', None]
+        assert all(item['output_digest'] and item['input_digest'] for item in data['trace'])
+        assert all(data[name] for name in ['evidence_agent', 'prosecution', 'defense', 'judge'])
+        # Cached responses need no budget; a fresh case must still respect it.
+        monkeypatch.setenv('FOUNDRY_DAILY_REQUEST_CAP', '0')
+        cached = client.post(path, json=request).json()
+        assert cached['source'] == 'cached_ai'
+        assert cached['api_attempts'] == 0
+        fresh_path = f"/api/matches/{match_id}/cases/{cases[1]['case_id']}/courtroom"
+        limited = client.post(fresh_path, json=request).json()
+        assert limited['error_category'] == 'daily_budget_unavailable'
+        assert len(wire.calls) == 4
+    deterministic = client.post(path, json={'through_timestamp': 5400}).json()
+    assert deterministic['source'] == 'deterministic_fallback'
+    assert deterministic['api_attempts'] == 0
