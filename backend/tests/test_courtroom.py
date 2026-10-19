@@ -82,6 +82,7 @@ class MockWire:
         self.on_call = None
         self.delay = 0
         self.response_status = 'completed'
+        self.response_transform = None
 
     async def handle(self, request):
         body = json.loads(request.content)
@@ -99,13 +100,14 @@ class MockWire:
             return httpx.Response(self.fail_status, json={'error': {'message': 'fake-secret-never-output'}})
         output = self.outputs[role]
         text = output if isinstance(output, str) else json.dumps(output)
-        return httpx.Response(200, json={
+        payload = {
             'id': f'resp_{role}', 'object': 'response', 'created_at': 0,
             'model': 'gpt-4.1-mini', 'status': self.response_status,
             'output': [{'type': 'message', 'id': f'msg_{role}', 'role': 'assistant',
                         'status': 'completed', 'content': [{'type': 'output_text',
                         'text': text, 'annotations': []}]}],
-        })
+        }
+        return httpx.Response(200, json=self.response_transform(payload) if self.response_transform else payload)
 
 
 @pytest.fixture
@@ -678,3 +680,254 @@ def test_registered_match_api_round_trip_and_repeated_requests(enabled, monkeypa
     deterministic = client.post(path, json={'through_timestamp': 5400}).json()
     assert deterministic['source'] == 'deterministic_fallback'
     assert deterministic['api_attempts'] == 0
+
+
+@pytest.mark.parametrize('failure,stage,reason', [
+    ('truncated', 'provider_response', 'response_not_completed'),
+    ('refusal', 'provider_response', 'response_refusal'),
+    ('envelope', 'provider_response', 'invalid_response_envelope'),
+    ('schema', 'structured_output', 'schema_validation_failed'),
+    ('unknown_event', 'grounding_validation', 'unknown_event_reference'),
+    ('wrong_value', 'grounding_validation', 'observation_value_mismatch'),
+    ('numeric_prose', 'grounding_validation', 'numeric_reasoning'),
+])
+def test_failed_evidence_diagnostics_distinguish_same_browser_symptoms(
+        enabled, wired, match, evidence, failure, stage, reason):
+    """All can look like the first live failure. Its raw response was not retained;
+    these reproduce the observable envelope, not an asserted provider payload.
+    """
+    service, wire = wired
+    private = 'fake-secret-never-output'
+    if failure == 'truncated':
+        wire.response_status = 'incomplete'
+        wire.response_transform = lambda body: {**body,
+            'incomplete_details': {'reason': 'max_output_tokens', 'private': private},
+            'usage': {'input_tokens': 12000, 'output_tokens': 768, 'total_tokens': 12768},
+            'private': private}
+    elif failure == 'refusal':
+        def refusal(body):
+            body['output'][0]['content'] = [{'type': 'refusal', 'refusal': private}]
+            return body
+        wire.response_transform = refusal
+    elif failure == 'envelope':
+        wire.response_transform = lambda _: [private]
+    elif failure == 'schema':
+        wire.outputs['evidence']['private'] = private  # Strict extra-field rejection.
+    elif failure == 'unknown_event':
+        wire.outputs['evidence']['event_ids'].append(private)
+    elif failure == 'wrong_value':
+        wire.outputs['evidence']['observations'][0]['value'] = private
+    elif failure == 'numeric_prose':
+        wire.outputs['evidence']['uncertainty'] = 'There are two plausible explanations.'
+    result = run(service, match, evidence)
+    assert result.source == 'deterministic_fallback'
+    assert result.error_category == 'invalid_agent_output'
+    assert result.http_status == 200
+    assert result.api_attempts == len(wire.calls) == 1
+    assert len(result.trace) == 1
+    assert result.trace[0].agent == 'evidence'
+    assert result.trace[0].handoff_to is None
+    assert result.trace[0].output_digest is None
+    record = json.loads((service.cache.directory / f'{result.cache_key}.json').read_text())
+    assert record['http_status'] == 200
+    assert record['trace'] == [entry.model_dump() for entry in result.trace]
+    diagnostic = record['diagnostics']
+    assert diagnostic['stage'] == stage
+    assert diagnostic['reason'] == reason
+    assert diagnostic['agent'] == 'evidence'
+    assert diagnostic['max_output_tokens'] == 768
+    assert 0 < diagnostic['payload_bytes'] < diagnostic['request_bytes'] <= 128000
+    if failure == 'truncated':
+        assert diagnostic['response_status'] == 'incomplete'
+        assert diagnostic['incomplete_reason'] == 'max_output_tokens'
+        assert diagnostic['output_tokens'] == 768
+    serialized = json.dumps(record)
+    assert private not in serialized
+    assert private not in result.model_dump_json()
+    assert 'prior_submissions' not in serialized
+    assert 'interpretation' not in serialized
+    assert json.loads(service.budget.path.read_text())['count'] == 1
+    blocked = run(service, match, evidence)
+    assert blocked.error_category == 'previous_trial_failed_or_incomplete'
+    assert blocked.api_attempts == 0
+    assert len(wire.calls) == 1
+
+
+@pytest.mark.parametrize('status,category', [(401, 'authentication_or_access_denied'),
+    ('dns', 'dns_failure'), ('timeout', 'timeout')])
+def test_failure_diagnostics_do_not_confuse_network_access_and_validation(
+        enabled, wired, match, evidence, status, category):
+    service, wire = wired
+    wire.fail_role, wire.fail_status = 'evidence', status
+    result = run(service, match, evidence)
+    record = json.loads((service.cache.directory / f'{result.cache_key}.json').read_text())
+    assert result.error_category == category
+    assert record['diagnostics']['stage'] == ('provider_response' if status == 401 else 'network')
+    assert record['diagnostics']['reason'] == category
+    assert record['http_status'] == (401 if status == 401 else None)
+    assert len(wire.calls) == 1
+    assert 'fake-secret' not in json.dumps(record)
+
+
+def test_diagnostics_allowlist_untrusted_status_and_usage(enabled, wired, match, evidence):
+    service, wire = wired
+    private = 'fake-secret-never-output'
+    wire.response_transform = lambda body: {**body, 'status': private,
+        'incomplete_details': {'reason': private},
+        'usage': {'input_tokens': private, 'output_tokens': -1, 'total_tokens': True}}
+    result = run(service, match, evidence)
+    record = json.loads((service.cache.directory / f'{result.cache_key}.json').read_text())
+    assert record['diagnostics']['response_status'] == 'unknown'
+    assert record['diagnostics']['incomplete_reason'] == 'unknown'
+    assert not {'input_tokens', 'output_tokens', 'total_tokens'} & record['diagnostics'].keys()
+    assert private not in json.dumps(record)
+
+
+def test_legacy_failed_record_stays_blocked_without_rewriting(enabled, wired, match, evidence):
+    service, wire = wired
+    wire.outputs['evidence']['observations'][0]['value'] = 'incorrect'
+    first = run(service, match, evidence)
+    legacy = {'status': 'failed', 'error_category': 'invalid_agent_output', 'api_attempts': 1}
+    service.cache.write(first.cache_key, legacy)
+    path = service.cache.directory / f'{first.cache_key}.json'
+    before = path.read_bytes()
+    repeat = run(service, match, evidence)
+    assert repeat.error_category == 'previous_trial_failed_or_incomplete'
+    assert repeat.api_attempts == 0
+    assert path.read_bytes() == before
+    assert len(wire.calls) == 1
+
+
+def test_exact_live_case_input_matches_reported_handoff_without_inference():
+    from app.courtroom_evidence import digest
+    evidence = build_evidence(get_match('synthetic-101'),
+        'synthetic-101-missed_opportunity-away-3218', 3308)
+    assert digest({'evidence': evidence.model_dump(), 'prior_submissions': {}}).startswith('731856a6c450')
+    assert len(evidence.events) == 59
+    assert len(evidence.facts) == 33
+
+
+@pytest.mark.parametrize('variant,expected_stage,expected_reason', [
+    ('valid_numeric_observation', None, None),
+    ('missing_trigger', 'grounding_validation', 'missing_trigger_reference'),
+    ('future_event', 'grounding_validation', 'unknown_event_reference'),
+    ('unsupported_citation', 'grounding_validation', 'event_not_supported_by_fact'),
+    ('numeric_value_type', 'structured_output', 'schema_validation_failed'),
+    ('missing_required_field', 'structured_output', 'schema_validation_failed'),
+    ('malformed_json', 'structured_output', 'schema_validation_failed'),
+    ('overlong_interpretation', 'structured_output', 'schema_validation_failed'),
+    ('numeric_word_in_prose', 'grounding_validation', 'numeric_reasoning'),
+])
+def test_exact_case_evidence_validation_boundaries_with_mocked_framework(
+        enabled, tmp_path, variant, expected_stage, expected_reason):
+    """Exercise the preserved case with temporary records and fake transport.
+
+    These hypothetical responses test validator behavior, not the unknown live
+    output. The autouse fixture forbids real sockets and never loads .env.
+    """
+    match = get_match('synthetic-101')
+    evidence = build_evidence(match, 'synthetic-101-missed_opportunity-away-3218', 3308)
+    wire = MockWire(evidence)
+    output = wire.outputs['evidence']
+    if variant == 'valid_numeric_observation':
+        fact = next(f for f in evidence.facts if f.event_ids and f.value.isdigit())
+        output['observations'] = [{'fact_id': fact.fact_id, 'value': fact.value}]
+        output['interpretation']['fact_ids'] = [fact.fact_id]
+        output['interpretation']['event_ids'] = [fact.event_ids[0]]
+    elif variant == 'missing_trigger':
+        output['event_ids'] = [next(e.event_id for e in evidence.events
+            if e.event_id not in evidence.trigger_event_ids)]
+    elif variant == 'future_event':
+        output['event_ids'].append(next(e['event_id'] for e in match.events
+            if e['timestamp'] > evidence.evidence_cutoff))
+    elif variant == 'unsupported_citation':
+        trigger = evidence.trigger_event_ids[0]
+        fact = next(f for f in evidence.facts if f.event_ids and trigger not in f.event_ids)
+        output['interpretation']['fact_ids'] = [fact.fact_id]
+        output['interpretation']['event_ids'] = [trigger]
+    elif variant == 'numeric_value_type':
+        output['observations'][0]['value'] = 7  # Contract requires an exact string.
+    elif variant == 'missing_required_field':
+        del output['uncertainty']
+    elif variant == 'malformed_json':
+        wire.outputs['evidence'] = '{"observations":['
+    elif variant == 'overlong_interpretation':
+        output['interpretation']['interpretation'] = 'The recorded spell permits alternative readings. ' * 15
+    else:
+        output['uncertainty'] = 'The record leaves more than one plausible explanation.'
+    service = courtroom.TrialService(courtroom.TrialCache(tmp_path / 'cache'),
+        DailyRequestBudget(tmp_path / 'usage.json'), httpx.MockTransport(wire.handle))
+    result = asyncio.run(service.analyze(match, evidence.case_id, 3308, allow_live=True))
+    if expected_reason is None:
+        assert result.source == 'live_ai'  # Mock provenance; no Azure connection.
+        assert len(wire.calls) == 4
+        assert result.evidence_agent.observations[0].value == fact.value
+        assert [entry.agent for entry in result.trace] == list(courtroom.ROLES)
+        assert all(entry.status == 'completed' for entry in result.trace)
+    else:
+        assert result.source == 'deterministic_fallback'
+        assert result.error_category == 'invalid_agent_output'
+        assert result.evidence_agent is None
+        assert result.api_attempts == len(wire.calls) == 1
+        assert result.trace[0].handoff_to is None
+        assert result.trace[0].output_digest is None
+        record = json.loads((service.cache.directory / f'{result.cache_key}.json').read_text())
+        assert record['diagnostics']['stage'] == expected_stage
+        assert record['diagnostics']['reason'] == expected_reason
+        assert record['http_status'] == 200
+    assert wire.calls[0][1]['max_output_tokens'] == 768
+
+
+@pytest.mark.parametrize('uncertainty,expected_reason', [
+    ('Alternative explanations remain plausible; causal influence is uncertain.', None),
+    ('Causal influence cannot be proved from this record.', 'overconfident_reasoning'),
+    ('There is more than one plausible explanation.', 'numeric_reasoning'),
+])
+def test_evidence_prompt_narrative_examples_match_unchanged_validator(
+        enabled, wired, match, evidence, uncertainty, expected_reason):
+    """The prompt's safe example passes; literal banned words still fail even
+    in semantically cautious prose. Typed numeric facts remain permissible.
+    """
+    from app.courtroom_evidence import digest
+    service, wire = wired
+    fact = next(f for f in evidence.facts if f.event_ids and f.value.isdigit())
+    contribution = wire.outputs['evidence']
+    contribution['observations'] = [{'fact_id': fact.fact_id, 'value': fact.value}]
+    contribution['interpretation']['fact_ids'] = [fact.fact_id]
+    contribution['interpretation']['event_ids'] = [fact.event_ids[0]]
+    contribution['event_ids'] = list(dict.fromkeys([*evidence.trigger_event_ids, fact.event_ids[0]]))
+    contribution['uncertainty'] = uncertainty
+    result = run(service, match, evidence)
+    body = wire.calls[0][1]
+    assert body['max_output_tokens'] == 768
+    assert set(body['text']['format']['schema']['properties']) == {
+        'observations', 'event_ids', 'interpretation', 'uncertainty'}
+    if expected_reason is None:
+        assert uncertainty in body['instructions']  # Exact recommended wording.
+        assert result.source == 'live_ai'
+        assert result.evidence_agent.observations[0].value == fact.value
+        assert len(wire.calls) == 4
+        cached = run(service, match, evidence)
+        assert cached.source == 'cached_ai' and cached.api_attempts == 0
+        assert len(wire.calls) == 4
+    else:
+        assert result.source == 'deterministic_fallback'
+        assert result.evidence_agent is None
+        assert len(wire.calls) == 1
+        record = json.loads((service.cache.directory / f'{result.cache_key}.json').read_text())
+        assert record['diagnostics']['reason'] == expected_reason
+        assert record['diagnostics']['prompt_digest'] == digest({'instructions': body['instructions']})
+        assert body['instructions'] not in json.dumps(record)
+
+
+def test_evidence_trigger_citation_must_be_top_level_even_if_interpretation_cites_it(
+        enabled, wired, match, evidence):
+    service, wire = wired
+    assert set(evidence.trigger_event_ids) <= set(wire.outputs['evidence']['interpretation']['event_ids'])
+    wire.outputs['evidence']['event_ids'] = [next(event.event_id for event in evidence.events
+        if event.event_id not in evidence.trigger_event_ids)]
+    result = run(service, match, evidence)
+    assert result.error_category == 'invalid_agent_output'
+    assert result.api_attempts == len(wire.calls) == 1
+    record = json.loads((service.cache.directory / f'{result.cache_key}.json').read_text())
+    assert record['diagnostics']['reason'] == 'missing_trigger_reference'

@@ -17,6 +17,17 @@ EVIDENCE_VERSION = 'courtroom-evidence-v1'
 
 class InvalidAgentOutput(Exception):
     """No provider-controlled exception text may be returned to callers."""
+    REASONS = frozenset({
+        'validation_failed', 'numeric_reasoning', 'overconfident_reasoning',
+        'unsafe_reasoning', 'unknown_fact_reference', 'unknown_event_reference',
+        'event_not_supported_by_fact', 'wrong_submission_type',
+        'observation_value_mismatch', 'missing_trigger_reference',
+        'invalid_stance', 'missing_structured_value',
+    })
+
+    def __init__(self, reason='validation_failed'):
+        super().__init__('Invalid agent output')
+        self.reason = reason if reason in self.REASONS else 'validation_failed'
 
 
 def digest(value) -> str:
@@ -100,12 +111,12 @@ def _reasoning_text(text: str, evidence: VerifiedEvidence) -> None:
                  r'eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|'
                  r'nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|'
                  r'hundred|thousand|million|percent|xg)\b', text, re.I):
-        raise InvalidAgentOutput()
+        raise InvalidAgentOutput('numeric_reasoning')
     if re.search(r'\b(?:definitely|certainly|guaranteed|proved|proves|inevitably)\b', text, re.I):
-        raise InvalidAgentOutput()
+        raise InvalidAgentOutput('overconfident_reasoning')
     # Prevent a model echoing backend secrets or URLs in public reasoning.
     if re.search(r'https?://|\b(?:api[_ -]?key|authorization|bearer|sk-)\b', text, re.I):
-        raise InvalidAgentOutput()
+        raise InvalidAgentOutput('unsafe_reasoning')
 
 
 def validate_submission(role: str, output, evidence: VerifiedEvidence) -> None:
@@ -113,31 +124,36 @@ def validate_submission(role: str, output, evidence: VerifiedEvidence) -> None:
     known_ids = {event.event_id for event in evidence.events}
 
     def point(item: GroundedPoint):
-        if not set(item.fact_ids) <= facts.keys() or not set(item.event_ids) <= known_ids:
-            raise InvalidAgentOutput()
+        if not set(item.fact_ids) <= facts.keys():
+            raise InvalidAgentOutput('unknown_fact_reference')
+        if not set(item.event_ids) <= known_ids:
+            raise InvalidAgentOutput('unknown_event_reference')
         cited = {event_id for fact_id in item.fact_ids for event_id in facts[fact_id].event_ids}
         if not set(item.event_ids) <= cited:
-            raise InvalidAgentOutput()
+            raise InvalidAgentOutput('event_not_supported_by_fact')
         _reasoning_text(item.interpretation, evidence)
 
     if role == 'evidence':
         if not isinstance(output, EvidenceSubmission):
-            raise InvalidAgentOutput()
+            raise InvalidAgentOutput('wrong_submission_type')
         for assertion in output.observations:
-            if assertion.fact_id not in facts or assertion.value != facts[assertion.fact_id].value:
-                raise InvalidAgentOutput()
-        if (not set(output.event_ids) <= known_ids
-                or not set(evidence.trigger_event_ids) <= set(output.event_ids)):
-            raise InvalidAgentOutput()
+            if assertion.fact_id not in facts:
+                raise InvalidAgentOutput('unknown_fact_reference')
+            if assertion.value != facts[assertion.fact_id].value:
+                raise InvalidAgentOutput('observation_value_mismatch')
+        if not set(output.event_ids) <= known_ids:
+            raise InvalidAgentOutput('unknown_event_reference')
+        if not set(evidence.trigger_event_ids) <= set(output.event_ids):
+            raise InvalidAgentOutput('missing_trigger_reference')
         point(output.interpretation)
     elif role in ('prosecution', 'defense'):
         if not isinstance(output, Argument) or output.stance != ('support' if role == 'prosecution' else 'challenge'):
-            raise InvalidAgentOutput()
+            raise InvalidAgentOutput('invalid_stance')
         for item in output.points:
             point(item)
     else:
         if not isinstance(output, Ruling):
-            raise InvalidAgentOutput()
+            raise InvalidAgentOutput('wrong_submission_type')
         for item in output.findings:
             point(item)
         _reasoning_text(output.prosecution_assessment, evidence)

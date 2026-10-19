@@ -17,6 +17,8 @@ from .courtroom_evidence import InvalidAgentOutput, build_evidence, digest, fall
 from .courtroom_models import AgentTrace, TrialResult, VerifiedEvidence
 from .foundry import DailyRequestBudget, FoundrySettings, FoundryUnavailable, ROOT, _integer
 
+# Contract-compatible prompt clarifications retain valid caches and failed-case
+# blocks. Exact instructions are fingerprinted in future failure diagnostics.
 CONFIGURATION_VERSION = 'courtroom-v2-agent-token-budgets-af-core1.22.0-openai1.17.0'
 ROLES = ('evidence', 'prosecution', 'defense', 'judge')
 DEFAULT_AGENT_OUTPUT_TOKENS = {'evidence': 768, 'prosecution': 1024, 'defense': 1024, 'judge': 1536}
@@ -55,6 +57,7 @@ class TrialState:
     sent_roles: set = field(default_factory=set)
     error_category: Optional[str] = None
     http_status: Optional[int] = None
+    diagnostics: dict = field(default_factory=dict)
 
 
 class CacheBusy(Exception):
@@ -196,7 +199,10 @@ class TrialService:
                     # errors are also withheld, never interpolated into responses.
                     reason = state.error_category or 'agent_execution_failed'
                     self.cache.write(key, {'status': 'failed', 'error_category': reason,
-                                           'api_attempts': state.api_attempts})
+                                           'api_attempts': state.api_attempts,
+                                           'http_status': state.http_status,
+                                           'trace': [entry.model_dump() for entry in state.trace],
+                                           'diagnostics': state.diagnostics})
                     return fallback(evidence, reason, state, key)
         except CacheBusy:
             return fallback(evidence, 'trial_in_progress', key=key)

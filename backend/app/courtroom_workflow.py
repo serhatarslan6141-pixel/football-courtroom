@@ -10,6 +10,7 @@ import logging
 import os
 import socket
 import ssl
+from dataclasses import replace
 
 from agent_framework import Executor, WorkflowBuilder, handler
 from agent_framework.openai import OpenAIChatClient
@@ -34,7 +35,29 @@ uncertainty. Do not assert causation or that a different outcome definitely woul
 have occurred. Never include URLs, credentials or configuration details.
 """
 ROLE_INSTRUCTIONS = {
-    'evidence': 'Build the evidence file: select exact fact_id/value observations, cite the trigger event_ids, and distinguish an interpretation from those observed facts.',
+    'evidence': """Review the server-built verified evidence file; do not rebuild it,
+recompute statistics, or return its events/facts catalog. Return only the
+EvidenceSubmission fields: observations, event_ids, interpretation, uncertainty.
+Prefer a single observation and a short interpretation to stay concise.
+Copy each observation's fact_id and string value from the SAME evidence.facts
+entry exactly. These copied values and typed citation IDs are data, not free
+prose; the narrative restrictions apply to interpretation.interpretation and
+uncertainty. Do not infer, round, sum, or reformat an observed value.
+The TOP-LEVEL event_ids must contain EVERY evidence.trigger_event_ids member.
+Include the selected interpretation citations there too; do not list the whole
+event log. Every cited event must occur in evidence.events, within the supplied
+evidence_start/evidence_cutoff. Never extend the case to later match events.
+For interpretation.fact_ids select existing facts with supporting events.
+Every interpretation.event_ids entry must belong to the UNION of event_ids on
+those selected facts. Independently valid fact IDs and event IDs are not enough:
+the cited facts must actually support the cited events. The interpretation
+object has fact_ids, event_ids, and interpretation; do not add other keys.
+Keep narrative text inside the schema's character limits. Numeric words are
+forbidden even in hedges such as 'one possible explanation'. Also never use
+definitely, certainly, guaranteed, proved, proves, or inevitably in narrative,
+even when negated. Express uncertainty plainly, for example:
+'Alternative explanations remain plausible; causal influence is uncertain.'
+Do not turn observations into causal conclusions or hypothetical outcomes.""",
     'prosecution': 'Support the allegation with the strongest reasonable grounded interpretation. Explain potential match influence without asserting a hypothetical outcome as fact. stance must be support.',
     'defense': 'Challenge the prosecution using the same verified evidence. Address its assumptions, counterevidence, alternatives and missing information. stance must be challenge.',
     'judge': 'Impartially assess both arguments. Explain their relative strengths and weaknesses, cite findings, and preserve uncertainty. Confidence is low or medium; causation_established must be false and counterfactual_outcome unknown.',
@@ -64,6 +87,9 @@ def failure_category(exc, state):
         chain.append(exc)
         exc = exc.__cause__ or exc.__context__
     if any(isinstance(item, (InvalidAgentOutput, ValidationError)) for item in chain):
+        if not state.diagnostics.get('reason'):
+            invalid = next((item for item in chain if isinstance(item, InvalidAgentOutput)), None)
+            state.diagnostics['reason'] = invalid.reason if invalid else 'schema_validation_failed'
         return 'invalid_agent_output'
     for item in chain:
         if isinstance(item, APIStatusError):
@@ -85,20 +111,33 @@ def failure_category(exc, state):
 
 
 async def execute_trial(state, settings, config, budget, transport=None):
+    return await _execute_roles(state, settings, config, budget, transport,
+                                roles=ROLES, live_gate='COURTROOM_LIVE_ENABLED')
+
+
+async def execute_evidence_diagnostic(state, settings, config, budget, transport=None):
+    """A terminal Evidence executor. No other agent or workflow edge exists."""
+    return await _execute_roles(state, settings, replace(config, max_calls=min(1, config.max_calls)),
+                                budget, transport, roles=('evidence',),
+                                live_gate='EVIDENCE_DIAGNOSTIC_LIVE_ENABLED')
+
+
+async def _execute_roles(state, settings, config, budget, transport, *, roles, live_gate):
     private_dependency_logging()
 
-    def stop(category):
+    def stop(category, reason=None):
         state.error_category = category
+        state.diagnostics['reason'] = reason or category
         raise TrialStopped() from None
 
     async def before_send(request):
         # Enforced at every physical HTTP attempt, including any unexpected SDK
         # or framework follow-up. Nothing can send a second call for a role.
-        if state.active_role not in ROLES or state.active_role in state.sent_roles:
+        if state.active_role not in roles or state.active_role in state.sent_roles:
             stop('duplicate_model_call_blocked')
         if state.api_attempts >= config.max_calls:
             stop('trial_call_limit')
-        if os.environ.get('COURTROOM_LIVE_ENABLED', '').lower() != 'true':
+        if os.environ.get(live_gate, '').lower() != 'true':
             stop('live_disabled')
         try:
             current = FoundrySettings.from_env()
@@ -111,6 +150,7 @@ async def execute_trial(state, settings, config, budget, transport=None):
                 or current.deployment != settings.deployment):
             stop('configuration_changed')
         body = json.loads(request.content)
+        state.diagnostics['request_bytes'] = len(request.content)
         if len(request.content) > config.max_input_bytes:
             stop('input_limit')
         if (request.method != 'POST' or str(request.url) != settings.base_url + 'responses'
@@ -125,21 +165,48 @@ async def execute_trial(state, settings, config, budget, transport=None):
             stop('daily_budget_unavailable')
         state.sent_roles.add(state.active_role)
         state.api_attempts += 1
+        state.diagnostics['stage'] = 'network'
 
     async def after_receive(response):
         state.http_status = response.status_code
+        state.diagnostics['stage'] = 'provider_response'
         if 200 <= response.status_code < 300:
             # Parsing can sometimes recover valid JSON from an incomplete
             # response. Accept only a completed text response, with no tools.
             try:
                 raw = json.loads(await response.aread())
-                if (raw.get('status') != 'completed' or not raw.get('output')
-                        or any(item.get('type') != 'message' for item in raw['output'])
-                        or any(content.get('type') != 'output_text'
-                               for item in raw['output'] for content in item.get('content', []))):
-                    stop('invalid_agent_output')
+                if not isinstance(raw, dict):
+                    stop('invalid_agent_output', 'invalid_response_envelope')
+                # Persist only allowlisted metadata, never text, headers, raw
+                # provider errors, prompts, URLs or validation input values.
+                status = raw.get('status')
+                state.diagnostics['response_status'] = status if status in (
+                    'completed', 'incomplete', 'failed', 'cancelled', 'in_progress', 'queued') else 'unknown'
+                details = raw.get('incomplete_details')
+                if isinstance(details, dict):
+                    incomplete = details.get('reason')
+                    state.diagnostics['incomplete_reason'] = incomplete if incomplete in (
+                        'max_output_tokens', 'content_filter') else 'unknown'
+                usage = raw.get('usage')
+                if isinstance(usage, dict):
+                    for key in ('input_tokens', 'output_tokens', 'total_tokens'):
+                        count = usage.get(key)
+                        if type(count) is int and 0 <= count <= 100_000_000:
+                            state.diagnostics[key] = count
+                if status != 'completed':
+                    stop('invalid_agent_output', 'response_not_completed')
+                if not raw.get('output'):
+                    stop('invalid_agent_output', 'missing_response_output')
+                if any(item.get('type') != 'message' for item in raw['output']):
+                    stop('invalid_agent_output', 'unexpected_response_output')
+                contents = [content for item in raw['output'] for content in item.get('content', [])]
+                if any(content.get('type') == 'refusal' for content in contents):
+                    stop('invalid_agent_output', 'response_refusal')
+                if any(content.get('type') != 'output_text' for content in contents):
+                    stop('invalid_agent_output', 'unexpected_response_content')
+                state.diagnostics['stage'] = 'structured_output'
             except (ValueError, TypeError, AttributeError):
-                stop('invalid_agent_output')
+                stop('invalid_agent_output', 'invalid_response_envelope')
 
     async with httpx.AsyncClient(
         transport=transport, trust_env=False, follow_redirects=False,
@@ -151,12 +218,13 @@ async def execute_trial(state, settings, config, budget, transport=None):
                 model=settings.deployment, async_client=sdk,
                 function_invocation_configuration={'max_iterations': 1, 'max_function_calls': 1},
             )
+            instructions = {role: f'ROLE={role}\n{COMMON_INSTRUCTIONS}\n{ROLE_INSTRUCTIONS[role]}' for role in roles}
             agents = {role: client.as_agent(
                 name=f'FootballCourtroom_{role}',
-                instructions=f'ROLE={role}\n{COMMON_INSTRUCTIONS}\n{ROLE_INSTRUCTIONS[role]}',
+                instructions=instructions[role],
                 default_options={'response_format': SCHEMAS[role], 'store': False,
                                  'max_tokens': config.output_tokens_for(role), 'tool_choice': 'none'},
-            ) for role in ROLES}
+            ) for role in roles}
 
             class ValidatedStage(Executor):
                 def __init__(self, role):
@@ -173,7 +241,11 @@ async def execute_trial(state, settings, config, budget, transport=None):
                     payload = json.dumps({'evidence': shared.evidence.model_dump(),
                                           'prior_submissions': prior}, separators=(',', ':'))
                     input_hash = digest(json.loads(payload))
-                    next_role = ROLES[ROLES.index(role) + 1] if role != 'judge' else None
+                    shared.diagnostics = {'stage': 'request', 'agent': role,
+                                          'prompt_digest': digest({'instructions': instructions[role]}),
+                                          'payload_bytes': len(payload.encode()),
+                                          'max_output_tokens': config.output_tokens_for(role)}
+                    next_role = roles[roles.index(role) + 1] if role != roles[-1] else None
                     try:
                         if len(payload.encode()) > config.max_input_bytes:
                             stop('input_limit')
@@ -182,11 +254,13 @@ async def execute_trial(state, settings, config, budget, transport=None):
                         response = await asyncio.wait_for(agents[role].run(payload), timeout=settings.timeout)
                         output = response.value
                         if output is None:
-                            raise InvalidAgentOutput()
+                            raise InvalidAgentOutput('missing_structured_value')
                         output = SCHEMAS[role].model_validate(output)
+                        shared.diagnostics['stage'] = 'grounding_validation'
                         validate_submission(role, output, shared.evidence)
                     except Exception as exc:
                         shared.error_category = failure_category(exc, shared)
+                        shared.diagnostics.setdefault('reason', shared.error_category)
                         shared.trace.append(AgentTrace(
                             agent=role, status='failed', handoff_to=None, input_digest=input_hash,
                             output_digest=None, error_category=shared.error_category))
@@ -198,15 +272,15 @@ async def execute_trial(state, settings, config, budget, transport=None):
                     ctx.state.set('case_id', shared.evidence.case_id)
                     ctx.state.set('validated_submissions', {name: value.model_dump()
                                   for name, value in shared.outputs.items()})
-                    if role == 'judge':
+                    if role == roles[-1]:
                         await ctx.yield_output(shared)
                     else:
                         await ctx.send_message(shared)
 
-            stages = [ValidatedStage(role) for role in ROLES]
-            builder = WorkflowBuilder(start_executor=stages[0], output_from=[stages[-1]], max_iterations=8)
+            stages = [ValidatedStage(role) for role in roles]
+            builder = WorkflowBuilder(start_executor=stages[0], output_from=[stages[-1]], max_iterations=2 * len(roles))
             for left, right in zip(stages, stages[1:]):
                 builder.add_edge(left, right)
             result = await builder.build().run(state)
-            if len(result.get_outputs()) != 1 or set(state.outputs) != set(ROLES):
+            if len(result.get_outputs()) != 1 or set(state.outputs) != set(roles):
                 stop('incomplete_workflow')
