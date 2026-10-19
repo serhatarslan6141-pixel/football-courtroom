@@ -119,7 +119,7 @@ The secondary rail has Stats, Events, and Cases tabs. History is paginated in gr
 
 ### Interactive courtroom
 
-Opening an eligible case starts a five-stage trial in a courtroom with a central bench and opposing lecterns. Begin the trial, replay the recorded incident and its context, hear prosecution and defense submissions one at a time, then record your opinion. Only then does the preliminary assessment appear. Current assessments remain inconclusive where the event record cannot establish significance or causation; no AI judge or generated dialogue is presented.
+Opening an eligible case starts a five-stage trial in the existing purple/gold courtroom. Replay the evidence, hear both sides and record your opinion before the ruling is revealed. **Generate AI Trial** explicitly requests the four-agent backend; nothing generates automatically. Live, cached and recorded-fallback sources are labeled, and actual handoffs are available in a collapsible trace. Click citations to inspect the bounded evidence replay without moving the match cursor. The user's vote remains independent of the AI judge. With AI disabled, the original recorded-evidence trial remains available. See [Phase 4C](docs/phase4c.md) for the flow, safe testing and remaining limitations.
 
 Votes remain in the current session, scoped to the fixture and case. Evidence playback is separate from the match cursor, and returning restores the exact paused match position. See [the courtroom notes](docs/courtroom.md) for component structure, evidence safeguards and the future Microsoft Foundry response interface.
 

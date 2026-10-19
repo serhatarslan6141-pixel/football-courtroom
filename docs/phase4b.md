@@ -335,9 +335,8 @@ courtroom budgets and changed the configuration version, so old short-response
 cache entries are not reused under the new policy. No `.env` edits, frontend
 source changes, live inference or deployment were needed.
 
-Phase 4C should adapt this response to the existing `TrialPresentation` contract,
-add explicit user-triggered trial loading and source/error/cache disclosure,
-surface citations and validated handoffs, and retain replay cutoff, stale-response
-guards, the paused return cursor and vote-before-ruling behavior. Never replace
-the recorded event log with generated narrative. No frontend integration is
-included in Phase 4B.
+[Phase 4C](phase4c.md) now adapts this response to the existing `TrialPresentation`
+contract with explicit generation, source/error/cache disclosure, clickable
+citations and actual handoffs. It retains replay cutoffs, stale-response guards,
+the paused return cursor and vote-before-ruling behavior. Recorded events remain
+authoritative; generated narrative never replaces the replay log.

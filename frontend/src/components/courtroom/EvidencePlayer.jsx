@@ -43,7 +43,7 @@ function useEvidencePlayback(timestamp, end, onSeek) {
   return { playing, setPlaying, speed, setSpeed }
 }
 
-export default function EvidencePlayer({ trial, match, timestamp, onSeek }) {
+export default function EvidencePlayer({ trial, match, timestamp, onSeek, citedEventId }) {
   const clips = useMemo(() => {
     const { start, end } = trial.bounds
     const incident = trial.incidentTimestamp
@@ -99,6 +99,7 @@ export default function EvidencePlayer({ trial, match, timestamp, onSeek }) {
 
   return (
     <section className="court-evidence" aria-label="Incident evidence replay">
+      {citedEventId && <p className="citation-focus" role="status">Cited moment selected · {formatClock(trial.knownEvents.find((event) => event.event_id === citedEventId)?.timestamp ?? timestamp)}</p>}
       <div className="evidence-title-row">
         <span className="trial-overline">EXHIBIT / THE MATCH RECORD</span>
         <span>Recorded through {formatClock(trial.bounds.end)}</span>

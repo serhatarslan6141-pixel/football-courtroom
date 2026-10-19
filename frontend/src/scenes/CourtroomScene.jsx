@@ -17,9 +17,12 @@ import CounselPodium from '../components/courtroom/CounselPodium.jsx'
 import ArgumentHearing from '../components/courtroom/ArgumentHearing.jsx'
 import UserVerdict from '../components/courtroom/UserVerdict.jsx'
 import JudgeVerdict from '../components/courtroom/JudgeVerdict.jsx'
+import AiTrialPanel from '../components/courtroom/AiTrialPanel.jsx'
+import VerifiedEvidenceFile from '../components/courtroom/VerifiedEvidenceFile.jsx'
+import { adaptCourtroomResponse } from '../domain/aiCourtroom.js'
 import './CourtroomScene.css'
 
-function TrialRoom({ trial }) {
+function TrialRoom({ trial, invalid }) {
   const {
     matchData,
     trialStage,
@@ -31,6 +34,9 @@ function TrialRoom({ trial }) {
     caseVote,
     castCaseVote,
     goToMatch,
+    aiTrial,
+    aiTrialAvailable,
+    generateAiTrial,
   } = useMatchSession()
   const stageElement = useRef(null)
   useEffect(() => {
@@ -38,6 +44,19 @@ function TrialRoom({ trial }) {
   }, [trialStage])
   const [side, setSide] = useState('prosecution')
   const [submission, setSubmission] = useState(0)
+  const [citationFocus, setCitationFocus] = useState(null)
+  useEffect(() => {
+    if (!citationFocus || trialStage !== 'evidence') return
+    stageElement.current?.focus({ preventScroll: true })
+    stageElement.current?.scrollIntoView?.({ block: 'start', behavior: 'auto' })
+  }, [citationFocus, trialStage])
+  const citeEvent = (eventId) => {
+    const event = trial.knownEvents.find((item) => item.event_id === eventId)
+    if (!event || event.timestamp < trial.bounds.start || event.timestamp > trial.bounds.end) return
+    reviewEvidence(event.timestamp)
+    setTrialStage('evidence')
+    setCitationFocus((previous) => ({ eventId, sequence: (previous?.sequence ?? 0) + 1 }))
+  }
   const changeSide = (value) => {
     setSide(value)
     setSubmission(0)
@@ -73,6 +92,8 @@ function TrialRoom({ trial }) {
           INCIDENT <time>{formatClock(trial.incidentTimestamp)}</time>
         </span>
       </div>
+      <AiTrialPanel trial={trial} request={aiTrial} available={aiTrialAvailable}
+        invalid={invalid} onGenerate={generateAiTrial} />
       <div className={`court-room stage-${trialStage}`}>
         <CourtroomSet />
         <JudgeBench stage={trialStage} />
@@ -99,12 +120,14 @@ function TrialRoom({ trial }) {
               <CaseIntroduction trial={trial} onBegin={advanceTrial} />
             ) : null}
             {trialStage === 'evidence' ? (
-              <EvidencePlayer
+              <><EvidencePlayer
+                key={citationFocus?.sequence ?? 0}
                 trial={trial}
                 match={matchData}
                 timestamp={evidenceTimestamp}
                 onSeek={reviewEvidence}
-              />
+                citedEventId={citationFocus?.eventId}
+              /><VerifiedEvidenceFile trial={trial} onCite={citeEvent} /></>
             ) : null}
             {trialStage === 'arguments' ? (
               <ArgumentHearing
@@ -114,6 +137,7 @@ function TrialRoom({ trial }) {
                 onSide={changeSide}
                 onIndex={setSubmission}
                 onEvidence={() => setTrialStage('evidence')}
+                onCite={citeEvent}
               />
             ) : null}
             {trialStage === 'vote' ? (
@@ -124,6 +148,8 @@ function TrialRoom({ trial }) {
                 assessment={trial.assessment}
                 vote={caseVote}
                 onReturn={goToMatch}
+                trial={trial}
+                onCite={citeEvent}
               />
             ) : null}
           </div>
@@ -179,16 +205,24 @@ export default function CourtroomScene() {
     matchData,
     courtroomReturnPosition,
     goToMatch,
+    aiTrial,
   } = useMatchSession()
-  const trial = useMemo(
-    () =>
-      createTrialPresentation(
+  const { trial, invalid } = useMemo(
+    () => {
+      const recorded = createTrialPresentation(
         selectedCase,
         events,
         matchData,
         courtroomReturnPosition,
-      ),
-    [selectedCase, events, matchData, courtroomReturnPosition],
+      )
+      if (!aiTrial?.result) return { trial: recorded, invalid: false }
+      try {
+        return { trial: adaptCourtroomResponse(aiTrial.result, selectedCase, events, matchData, courtroomReturnPosition), invalid: false }
+      } catch {
+        return { trial: recorded, invalid: true }
+      }
+    },
+    [selectedCase, events, matchData, courtroomReturnPosition, aiTrial],
   )
   if (!trial)
     return (
@@ -203,5 +237,5 @@ export default function CourtroomScene() {
         </button>
       </main>
     )
-  return <TrialRoom key={trial.caseId} trial={trial} />
+  return <TrialRoom key={trial.caseId} trial={trial} invalid={invalid} />
 }

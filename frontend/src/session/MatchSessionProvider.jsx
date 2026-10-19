@@ -1,11 +1,36 @@
-import { useEffect, useMemo, useReducer } from 'react'
-import { voteKey } from '../domain/courtroom.js'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { caseAvailableAt, voteKey } from '../domain/courtroom.js'
+import { adaptCourtroomResponse, trialIdentity } from '../domain/aiCourtroom.js'
 import { apiClient } from '../services/apiClient.js'
 import { MatchSessionContext } from './MatchSessionContext.js'
 import { initialSession, sessionReducer, visibleEvents } from './sessionReducer.js'
 
 export function MatchSessionProvider({ children, api = apiClient }) {
   const [session, dispatch] = useReducer(sessionReducer, initialSession)
+  const submittedTrials = useRef(new Set())
+  const trialRequestSequence = useRef(0)
+  // Billable work is initiated only here, directly from the user's click.
+  // A ref locks synchronously, before React can render a disabled button.
+  const generateAiTrial = useCallback(async () => {
+    const item = session.snapshot?.cases.find((entry) => entry.case_id === session.selectedCaseId)
+    if (session.screen !== 'courtroom' || !item || !session.matchData
+      || !Number.isFinite(session.courtroomReturnPosition)
+      || caseAvailableAt(item) > session.courtroomReturnPosition || !api.generateAiTrial) return
+    const key = trialIdentity(item, session.matchData)
+    if (submittedTrials.current.has(key) || session.aiTrials[key]) return
+    submittedTrials.current.add(key)
+    const requestId = ++trialRequestSequence.current
+    dispatch({ type: 'AI_TRIAL_REQUEST', key, requestId })
+    try {
+      const result = await api.generateAiTrial(session.selectedMatchId, item.case_id, Math.floor(session.courtroomReturnPosition))
+      adaptCourtroomResponse(result, item, session.events, session.matchData, session.courtroomReturnPosition)
+      dispatch({ type: 'AI_TRIAL_SUCCEEDED', key, requestId, result })
+    } catch {
+      // Never echo arbitrary provider/network error text into the courtroom.
+      // A failed browser request may have reached Azure: do not clear the lock.
+      dispatch({ type: 'AI_TRIAL_FAILED', key, requestId })
+    }
+  }, [api, session])
   const { catalogVersion, selectedMatchId, matchVersion, replayVersion, pendingTimestamp,
     dataStatus, screen, isPlaying, replaySpeed, caseNotifications, creationRequest } = session
 
@@ -106,12 +131,15 @@ export function MatchSessionProvider({ children, api = apiClient }) {
       goToMatch: () => dispatch({ type: 'NAVIGATE', screen: 'match' }),
       openCourtroom: (item) => dispatch({ type: 'OPEN_COURTROOM', caseId: item?.case_id || session.selectedCaseId }),
       caseVote: session.caseVotes[voteKey(session.selectedMatchId, session.selectedCaseId)] || null,
+      aiTrial: session.aiTrials[trialIdentity(cases.find((item) => item.case_id === session.selectedCaseId), session.matchData)] || null,
+      aiTrialAvailable: typeof api.generateAiTrial === 'function',
+      generateAiTrial,
       advanceTrial: () => dispatch({ type: 'ADVANCE_TRIAL' }),
       setTrialStage: (stage) => dispatch({ type: 'SET_TRIAL_STAGE', stage }),
       castCaseVote: (vote) => dispatch({ type: 'CAST_CASE_VOTE', vote, caseId: session.selectedCaseId, matchVersion: session.matchVersion }),
       reviewEvidence: (timestamp) => dispatch({ type: 'REVIEW_EVIDENCE', timestamp }),
     }
-  }, [session])
+  }, [session, api, generateAiTrial])
 
   return <MatchSessionContext.Provider value={value}>{children}</MatchSessionContext.Provider>
 }

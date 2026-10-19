@@ -31,6 +31,12 @@ export function createApiClient({
     createMatch(signal) {
       return request('/api/matches', signal, { method: 'POST' })
     },
+    generateAiTrial(id, caseId, timestamp, signal) {
+      return request(`${matchPath(id)}/cases/${encodeURIComponent(caseId)}/courtroom`, signal, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ through_timestamp: timestamp, allow_live: true }),
+      })
+    },
     async loadMatch(id, signal) {
       const [matchData, payload] = await Promise.all([
         request(matchPath(id), signal),

@@ -27,6 +27,7 @@ export const initialSession = {
   trialStage: 'introduction',
   trialFurthestStage: 0,
   caseVotes: {},
+  aiTrials: {},
   caseNotifications: [],
   seenCaseIds: [],
   error: '',
@@ -38,6 +39,7 @@ function selectMatch(session, id) {
     screen: session.screen === 'courtroom' ? 'match' : session.screen,
     matches: session.matches,
     caseVotes: session.caseVotes,
+    aiTrials: session.aiTrials,
     catalogStatus: session.catalogStatus,
     catalogVersion: session.catalogVersion,
     creationVersion: session.creationVersion,
@@ -66,6 +68,19 @@ function requestReplay(session, timestamp, reset = false) {
 
 export function sessionReducer(session, action) {
   switch (action.type) {
+    case 'AI_TRIAL_REQUEST':
+      if (session.aiTrials[action.key]) return session
+      return { ...session, aiTrials: { ...session.aiTrials,
+        [action.key]: { status: 'loading', requestId: action.requestId } } }
+    case 'AI_TRIAL_SUCCEEDED':
+    case 'AI_TRIAL_FAILED': {
+      const current = session.aiTrials[action.key]
+      if (current?.status !== 'loading' || current.requestId !== action.requestId) return session
+      return { ...session, aiTrials: { ...session.aiTrials, [action.key]: {
+        ...current, status: action.type === 'AI_TRIAL_FAILED' ? 'error' : action.result.source === 'deterministic_fallback' ? 'fallback' : 'ready',
+        result: action.result ?? null,
+      } } }
+    }
     case 'RETRY':
       return {
         ...selectMatch(session, session.selectedMatchId),

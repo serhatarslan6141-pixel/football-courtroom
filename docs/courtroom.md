@@ -1,4 +1,10 @@
-# Interactive courtroom — Step 3
+# Interactive courtroom — Step 3 and Phase 4C
+
+[Phase 4C](phase4c.md) adds explicit four-agent generation to the flow below.
+The recorded-evidence experience remains the default. A validated backend
+response can supply AI interpretations and a judge ruling, with visible source
+labels, clickable citations and an inspectable trace. The original replay and
+independent voting rules are preserved.
 
 The courtroom presents one eligible case as a five-stage trial: introduction → evidence → opposing submissions → user vote → preliminary ruling. Its room, bench and lecterns are SVG/CSS, with responsive layouts and reduced-motion support. The football simulator, API and case detectors are unchanged.
 

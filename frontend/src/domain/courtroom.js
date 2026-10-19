@@ -115,7 +115,8 @@ export function createTrialPresentation(item, events, match, returnPosition) {
     const ids = fact.event_ids || []
     // A text claim may summarize every cited event. Drop it entirely if even
     // one reference is missing/future; filtering citations alone is not enough.
-    if (!fact.value || !ids.length || ids.some((id) => !knownIds.has(id)))
+    if (!fact.value || !ids.length || ids.some((id) => !knownIds.has(id)
+      || knownEvents.find((event) => event.event_id === id).timestamp < bounds.start))
       return []
     return [
       {
@@ -164,6 +165,7 @@ export function createTrialPresentation(item, events, match, returnPosition) {
     incidentTimestamp: item.detection_timestamp,
     bounds,
     knownEvents,
+    evidenceFacts: complete ? facts : [],
     arguments: {
       prosecution: complete ? facts : [],
       defense: complete ? defenses : [],

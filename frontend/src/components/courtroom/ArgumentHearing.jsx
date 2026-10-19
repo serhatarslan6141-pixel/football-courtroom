@@ -1,3 +1,6 @@
+import EvidenceCitations from './EvidenceCitations.jsx'
+import { isAiSource } from '../../domain/aiCourtroom.js'
+
 export default function ArgumentHearing({
   trial,
   side,
@@ -5,9 +8,11 @@ export default function ArgumentHearing({
   onSide,
   onIndex,
   onEvidence,
+  onCite,
 }) {
   const points = trial.arguments[side]
-  const point = points[index] || points[0]
+  const currentIndex = Math.max(0, Math.min(index, points.length - 1))
+  const point = points[currentIndex]
   return (
     <section
       className={`argument-hearing argument-${side}`}
@@ -35,7 +40,7 @@ export default function ArgumentHearing({
         </span>
         <span>
           {points.length
-            ? `${String(index + 1).padStart(2, '0')} / ${String(points.length).padStart(2, '0')}`
+            ? `${String(currentIndex + 1).padStart(2, '0')} / ${String(points.length).padStart(2, '0')}`
             : 'NO SUBMISSION'}
         </span>
       </div>
@@ -54,9 +59,13 @@ export default function ArgumentHearing({
         </p>
       </div>
       <div className="submission-source">
-        <span>FROM THE CASE RECORD</span>
+        <span>{isAiSource(trial.source) ? 'AI INTERPRETATION · CITED MATCH FACTS' : 'FROM THE CASE RECORD'}</span>
         <span>{point?.title || 'Evidence unavailable'}</span>
       </div>
+      {point?.supports?.length ? <div className="argument-fact-support" aria-label="Verified support for this argument">
+        {point.supports.map((fact) => <p key={fact.id}><span>{fact.title}</span><strong>{fact.text}</strong></p>)}
+      </div> : null}
+      <EvidenceCitations eventIds={point?.eventIds} trial={trial} onCite={onCite} />
       <div className="submission-controls">
         <button type="button" className="court-text" onClick={onEvidence}>
           ↶ Inspect the moment
@@ -65,16 +74,16 @@ export default function ArgumentHearing({
           <button
             type="button"
             aria-label="Previous submission"
-            disabled={index === 0}
-            onClick={() => onIndex(index - 1)}
+            disabled={currentIndex === 0}
+            onClick={() => onIndex(currentIndex - 1)}
           >
             ←
           </button>
           <button
             type="button"
             aria-label="Next submission"
-            disabled={index >= points.length - 1}
-            onClick={() => onIndex(index + 1)}
+            disabled={currentIndex >= points.length - 1}
+            onClick={() => onIndex(currentIndex + 1)}
           >
             →
           </button>

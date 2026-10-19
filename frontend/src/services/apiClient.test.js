@@ -72,3 +72,15 @@ it('loads a large catalog with embedded club colors without one request per fixt
   expect(catalog.matches).toHaveLength(100)
   expect(fetchImpl).toHaveBeenCalledTimes(1)
 })
+
+it('generates a trial only on explicit invocation using encoded IDs and the minimal contract', async () => {
+  const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ source: 'deterministic_fallback' }) }))
+  const client = createApiClient({ baseUrl: 'https://example.test/', fetchImpl })
+  expect(fetchImpl).not.toHaveBeenCalled()
+  await client.generateAiTrial('match/a', 'case/b', 100)
+  expect(fetchImpl).toHaveBeenCalledTimes(1)
+  expect(fetchImpl).toHaveBeenCalledWith('https://example.test/api/matches/match%2Fa/cases/case%2Fb/courtroom', {
+    signal: undefined, method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ through_timestamp: 100, allow_live: true }),
+  })
+})
