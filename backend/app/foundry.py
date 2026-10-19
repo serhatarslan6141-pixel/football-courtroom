@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
+import ssl
 from urllib.parse import urlsplit
 
 import httpx
@@ -20,6 +22,34 @@ PROBE_INPUT = 'Reply with exactly: FOOTBALL_COURTROOM_OK'
 
 class FoundryUnavailable(Exception):
     """Safe, fixed message only; provider error bodies must never escape."""
+
+
+def network_failure_message(exc: BaseException) -> str:
+    """Classify exception types only, never provider text, URLs or headers."""
+    chain, seen = [], set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    if any(isinstance(item, socket.gaierror) for item in chain):
+        return 'Azure DNS resolution failed. Check the resource hostname and local/private DNS configuration.'
+    if any(isinstance(item, ssl.SSLError) for item in chain):
+        return 'Azure TLS/SSL connection failed. Check certificate trust and network interception; TLS verification remains enabled.'
+    for kind, message in (
+        (httpx.ProxyError, 'Azure proxy connection failed.'),
+        (httpx.ConnectTimeout, 'Azure connection timed out before a connection was established.'),
+        (httpx.ReadTimeout, 'Azure response read timed out. The request may have reached Azure.'),
+        (httpx.WriteTimeout, 'Azure request write timed out. The request may have partially reached Azure.'),
+        (httpx.PoolTimeout, 'Azure HTTP connection pool timed out.'),
+    ):
+        if any(isinstance(item, kind) for item in chain):
+            return message
+    if isinstance(exc, asyncio.TimeoutError):
+        return 'Azure whole-request deadline timed out. The network phase is unknown; Azure may have received the request.'
+    if isinstance(exc, APITimeoutError):
+        return 'Azure request timed out. The SDK did not identify the network phase.'
+    return 'Azure connection failed. The SDK did not identify DNS, TLS, proxy or timeout as the cause.'
 
 
 def _integer(name: str, default: int, low: int, high: int) -> int:
@@ -56,7 +86,9 @@ class FoundrySettings:
             host = url.hostname or ''
         except ValueError:
             raise FoundryUnavailable('Invalid Azure resource endpoint.') from None
-        if (url.scheme != 'https' or url.username or url.password or url.netloc != host
+        # DNS names are case-insensitive; url.hostname is already lowercase.
+        # Compare normalized authorities while still rejecting ports/userinfo.
+        if (url.scheme != 'https' or url.username or url.password or url.netloc.lower() != host
                 or url.query or url.fragment or url.path not in ('', '/openai/v1')
                 or not re.fullmatch(r'[a-zA-Z0-9-]+\.(openai\.azure\.com|services\.ai\.azure\.com)', host)):
             raise FoundryUnavailable('Use an HTTPS Azure resource endpoint, without credentials, query or project path.')
@@ -67,7 +99,7 @@ class FoundrySettings:
             base_url=f'https://{host}/openai/v1/', api_key=key, deployment=deployment,
             daily_cap=_integer('FOUNDRY_DAILY_REQUEST_CAP', 10, 0, 100),
             output_tokens=_integer('FOUNDRY_MAX_OUTPUT_TOKENS', 32, 16, 256),
-            timeout=_integer('FOUNDRY_TIMEOUT_SECONDS', 10, 1, 30),
+            timeout=_integer('FOUNDRY_TIMEOUT_SECONDS', 30, 1, 120),
             retries=_integer('FOUNDRY_MAX_RETRIES', 0, 0, 2),
         )
 
@@ -129,8 +161,8 @@ class FoundryConnection:
                 if response.status != 'completed' or response.output_text.strip() != 'FOOTBALL_COURTROOM_OK':
                     raise FoundryUnavailable('Model response was incomplete, refused or did not match the connection probe.')
                 return
-            except (APITimeoutError, APIConnectionError, asyncio.TimeoutError):
-                error = 'Azure request timed out or could not connect.'
+            except (APITimeoutError, APIConnectionError, asyncio.TimeoutError) as exc:
+                error = network_failure_message(exc)
             except APIStatusError as exc:
                 if exc.status_code in (401, 403):
                     raise FoundryUnavailable('Azure authentication or access denied. Check backend credentials and permissions.') from None

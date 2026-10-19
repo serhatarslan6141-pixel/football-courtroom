@@ -53,6 +53,10 @@ Set these three connection values:
 
 A URL already ending in `/openai/v1/` also works. Do not supply a playground URL,
 project URL (`/api/projects/...`), deployment URL, query string or HTTP URL.
+Resource hostnames are case-insensitive and are normalized to lowercase. The
+client constructs exactly one `/openai/v1/` suffix, whether the setting is a
+resource root or an already complete v1 base URL. Endpoint validation failures
+occur locally before reserving usage or sending any HTTP request.
 Only public Azure resource hostnames above are accepted; sovereign cloud
 endpoints and custom domains are not supported in this phase. No additional
 Azure resource or deployment is needed.
@@ -64,7 +68,7 @@ Safety settings in the same file:
 | `FOUNDRY_LIVE_ENABLED` | `false` | Only `true` enables calls |
 | `FOUNDRY_DAILY_REQUEST_CAP` | `10` | Integer 0–100; zero blocks calls |
 | `FOUNDRY_MAX_OUTPUT_TOKENS` | `32` | Integer 16–256 |
-| `FOUNDRY_TIMEOUT_SECONDS` | `10` | Integer 1–30; whole attempt deadline |
+| `FOUNDRY_TIMEOUT_SECONDS` | `30` | Integer 1–120; whole attempt deadline |
 | `FOUNDRY_MAX_RETRIES` | `0` | Integer 0–2 additional attempts; CLI always overrides to zero |
 
 `.env` is loaded **only by the explicit CLI**, from the project root, without
@@ -150,3 +154,34 @@ opt-in, caps, persistence, concurrency, retry accounting, kill switch, sanitized
 failures and unchanged deterministic routes. Existing frontend trial tests cover
 the deterministic fallback presentation. Future live arguments must have
 explicit provenance; nothing here labels deterministic output as live AI.
+
+## Diagnosing connectivity without inference
+
+A previous generic `timed out or could not connect` message does not retain the
+original failure phase. Current errors inspect only exception **types** in the
+SDK cause chain and return fixed DNS, TLS, proxy, connection-timeout, read/write-
+timeout, pool-timeout or whole-deadline messages. If the cause is unavailable,
+the message explicitly says the phase is unknown. No exception text, hostname,
+headers or provider payloads are printed. A generic 403 cannot by itself
+distinguish permissions from Azure networking policy.
+
+Safe diagnostics can resolve the configured hostname, connect to TCP 443,
+verify a TLS handshake with the SDK's CA bundle, and send an unauthenticated
+`HEAD /` with no key, no redirects and no inference. An HTTP response proves
+transport reachability only, not access to the deployment. DNS failure prevents
+TLS and HTTP checks; increasing the request timeout cannot fix a nonexistent
+DNS name. Compare the resource URL privately with Azure's Keys and Endpoint
+page. Private endpoints may require a VPN and correctly configured private DNS.
+Azure's Networking page can show public access, selected IP/network rules and
+private endpoints; these settings cannot be inferred from a local DNS failure.
+Do not disable TLS verification or broaden Azure firewall access to diagnose it.
+
+The SDK uses `trust_env=False`, so it ignores proxy and custom-CA environment
+variables. Networks that mandate a proxy or enterprise CA need an explicit,
+reviewed transport configuration; this code does not silently enable proxies.
+The default attempt deadline is now 30 seconds (up to 120 configurable).
+Existing `.env` values, such as 10 seconds, still override that default and are
+never rewritten. Slow Azure responses can exceed 10 seconds, but a fast DNS
+failure is independent of inference latency. After network checks succeed,
+another opt-in live probe is still needed to verify model access; it must be
+separately authorized and may be billable.

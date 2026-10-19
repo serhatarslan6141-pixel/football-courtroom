@@ -3,6 +3,8 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import json
+import socket
+import ssl
 
 from fastapi.testclient import TestClient
 import httpx
@@ -96,8 +98,9 @@ def test_invalid_limits(enabled, monkeypatch, tmp_path, wire, name, value):
 
 
 @pytest.mark.parametrize('suffix', ['', '/openai/v1/'])
-def test_real_sdk_payload_success(enabled, monkeypatch, tmp_path, wire, suffix):
-    monkeypatch.setenv('AZURE_OPENAI_ENDPOINT', 'https://test.services.ai.azure.com' + suffix)
+@pytest.mark.parametrize('hostname', ['test.services.ai.azure.com', 'TeSt.services.ai.azure.com'])
+def test_real_sdk_payload_success(enabled, monkeypatch, tmp_path, wire, suffix, hostname):
+    monkeypatch.setenv('AZURE_OPENAI_ENDPOINT', 'https://' + hostname + suffix)
     probe(tmp_path)
     request, = wire[0]
     assert str(request.url) == 'https://test.services.ai.azure.com/openai/v1/responses'
@@ -232,7 +235,7 @@ def test_whole_request_deadline(enabled, monkeypatch, tmp_path, wire):
     # Simulate a transport coroutine that ignores socket timeout. The outer
     # wait_for deadline still bounds the attempt without making a wire request.
     async def timeout(awaitable, *, timeout):
-        assert timeout == 10
+        assert timeout == 30
         awaitable.close()
         raise asyncio.TimeoutError()
     monkeypatch.setattr(foundry.asyncio, 'wait_for', timeout)
@@ -255,3 +258,54 @@ def test_auth_failure_never_retried(enabled, monkeypatch, tmp_path, wire):
     with pytest.raises(foundry.FoundryUnavailable, match='authentication'):
         probe(tmp_path)
     assert len(wire[0]) == 1
+
+
+@pytest.mark.parametrize('cause,category', [
+    (socket.gaierror(socket.EAI_NONAME, 'secret-hostname'), 'DNS resolution'),
+    (ssl.SSLCertVerificationError('secret-certificate-detail'), 'TLS/SSL'),
+    (httpx.ProxyError('secret-proxy'), 'proxy connection'),
+    (httpx.ConnectTimeout('secret-url'), 'connection timed out'),
+    (httpx.ReadTimeout('secret-url'), 'read timed out'),
+    (httpx.WriteTimeout('secret-url'), 'write timed out'),
+    (httpx.PoolTimeout('secret-url'), 'pool timed out'),
+])
+def test_network_failure_classification(cause, category):
+    request = httpx.Request('POST', 'https://test.openai.azure.com/openai/v1/responses')
+    wrapped = foundry.APIConnectionError(request=request)
+    intermediate = httpx.ConnectError('secret-details')
+    intermediate.__cause__ = cause
+    wrapped.__cause__ = intermediate
+    result = foundry.network_failure_message(wrapped)
+    assert category in result
+    assert 'secret' not in result
+    assert 'https://' not in result
+
+
+def test_generic_connection_failure_does_not_guess():
+    error = foundry.APIConnectionError(request=httpx.Request('POST', 'https://test.openai.azure.com'))
+    assert 'did not identify' in foundry.network_failure_message(error)
+
+
+def test_whole_request_timeout_is_distinct():
+    assert 'whole-request deadline' in foundry.network_failure_message(asyncio.TimeoutError())
+
+
+def test_timeout_default_and_configurable_ceiling(enabled, monkeypatch):
+    assert foundry.FoundrySettings.from_env().timeout == 30
+    monkeypatch.setenv('FOUNDRY_TIMEOUT_SECONDS', '120')
+    assert foundry.FoundrySettings.from_env().timeout == 120
+    monkeypatch.setenv('FOUNDRY_TIMEOUT_SECONDS', '121')
+    with pytest.raises(foundry.FoundryUnavailable):
+        foundry.FoundrySettings.from_env()
+
+
+def test_dns_cause_survives_sdk_wrapping_without_leaks(enabled, tmp_path, wire, monkeypatch):
+    async def fail(*args, **kwargs):
+        request = httpx.Request('POST', 'https://test.openai.azure.com/openai/v1/responses')
+        raise foundry.APIConnectionError(request=request) from socket.gaierror(socket.EAI_NONAME, 'secret-hostname')
+    from openai.resources.responses import AsyncResponses
+    monkeypatch.setattr(AsyncResponses, 'create', fail)
+    with pytest.raises(foundry.FoundryUnavailable, match='DNS resolution') as exc:
+        probe(tmp_path)
+    assert 'secret' not in str(exc.value)
+    assert not wire[0]
