@@ -6,6 +6,13 @@ response can supply AI interpretations and a judge ruling, with visible source
 labels, clickable citations and an inspectable trace. The original replay and
 independent voting rules are preserved.
 
+There is one courtroom. **Begin trial** starts the recorded case. The optional
+**Generate AI Trial** control sits beneath that entry action and within later
+stages, replacing the same evidence, podium submissions and ruling with verified
+AI output when available. It never resets the stage, evidence cursor or vote.
+Source and request status stay compact; role descriptions and actual handoffs
+are tucked into **How the AI reached this decision** beneath the courtroom floor.
+
 The courtroom presents one eligible case as a five-stage trial: introduction → evidence → opposing submissions → user vote → preliminary ruling. Its room, bench and lecterns are SVG/CSS, with responsive layouts and reduced-motion support. The football simulator, API and case detectors are unchanged.
 
 ## Components and state
@@ -16,6 +23,7 @@ The courtroom presents one eligible case as a five-stage trial: introduction →
 | --- | --- |
 | `CourtroomSet`, `JudgeBench`, `CounselPodium` | Physical room, central bench, opposing sides and the active speaker |
 | `CaseIntroduction` | API case question, incident description and Begin trial |
+| `TrialAnalysisControls`, `AgentTrace` | Optional explicit AI generation and source/status inside the stage; small collapsible workflow disclosure within the courtroom |
 | `TrialProgress` | Current stage and navigation to reached stages |
 | `EvidencePlayer` | Recorded pitch replay, build-up/incident/aftermath clips, play/pause, restart, seeking and slow motion |
 | `ArgumentHearing` | One case submission at a time; switch sides, advance submissions or inspect the incident |

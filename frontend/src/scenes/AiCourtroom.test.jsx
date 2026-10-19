@@ -40,6 +40,36 @@ async function voteStage(user) {
   await user.click(screen.getByRole('button', { name: 'Make your call' }))
 }
 
+it('offers optional AI inside one cinematic courtroom, after the primary Begin trial action', async () => {
+  const { user, api } = await openTrial()
+  const courtroom = document.querySelector('.court-room')
+  const begin = within(courtroom).getByRole('button', { name: 'Begin trial' })
+  const generateButton = within(courtroom).getByRole('button', { name: 'Generate AI Trial' })
+  expect(begin.className).toBe('court-primary')
+  expect(begin.compareDocumentPosition(generateButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(document.querySelectorAll('.trial-analysis')).toHaveLength(1)
+  expect(document.querySelectorAll('.court-room')).toHaveLength(1)
+  expect(screen.queryByText('Let both sides be heard.')).toBeNull()
+  expect(within(courtroom).getByText('Recorded evidence')).toBeTruthy()
+  const trace = within(courtroom).getByText('How the AI reached this decision').closest('details')
+  expect(trace.open).toBe(false)
+  await voteStage(user)
+  await user.click(screen.getByRole('button', { name: 'Not enough evidence', exact: true }))
+  await user.click(screen.getByRole('button', { name: 'Record my vote & hear the ruling' }))
+  expect(screen.getByText('INCONCLUSIVE')).toBeTruthy()
+  expect(api.generateAiTrial).not.toHaveBeenCalled()
+})
+
+it('keeps recorded court functional when AI is unavailable in the connection', async () => {
+  const api = makeApi()
+  delete api.generateAiTrial
+  const { user } = await openTrial(api)
+  expect(screen.getByRole('button', { name: 'Generate AI Trial' }).disabled).toBe(true)
+  expect(screen.getByText(/AI generation is unavailable/)).toBeTruthy()
+  await voteStage(user)
+  expect(screen.getByRole('heading', { name: /Where do you stand/ })).toBeTruthy()
+})
+
 it('never generates on navigation or StrictMode rerenders, and prevents rapid duplicate clicks', async () => {
   const pending = deferred(), api = makeApi()
   api.generateAiTrial.mockReturnValue(pending.promise)
@@ -171,6 +201,37 @@ it('keeps a previously recorded vote when AI arrives afterwards', async () => {
   await generate(user)
   expect(screen.getByText('PROSECUTION SUPPORTED')).toBeTruthy()
   expect(within(document.querySelector('.recorded-vote')).getByText('Agree with the defense')).toBeTruthy()
+})
+
+it('keeps a pending vote and the ruling sealed when AI replaces the recorded case', async () => {
+  const api = makeApi(), pending = deferred()
+  api.generateAiTrial.mockReturnValue(pending.promise)
+  const { user } = await openTrial(api)
+  await voteStage(user)
+  await user.click(screen.getByRole('button', { name: 'Agree with the defense', exact: true }))
+  await user.click(screen.getByRole('button', { name: 'Generate AI Trial' }))
+  await act(async () => pending.resolve(aiTrialResponse()))
+  expect(screen.getByRole('heading', { name: /Where do you stand/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Agree with the defense', exact: true }).getAttribute('aria-pressed')).toBe('true')
+  await user.click(screen.getByText('How the AI reached this decision'))
+  expect(screen.queryByText(AI_COPY.judge)).toBeNull()
+  expect(screen.queryByText('PROSECUTION SUPPORTED')).toBeNull()
+  expect(screen.getByRole('button', { name: /The ruling/ }).disabled).toBe(true)
+  await user.click(screen.getByRole('button', { name: 'Record my vote & hear the ruling' }))
+  expect(screen.getAllByText(AI_COPY.judge)).toHaveLength(1)
+  expect(within(document.querySelector('.recorded-vote')).getByText('Agree with the defense')).toBeTruthy()
+})
+
+it('can add AI at the evidence stage without resetting the evidence cursor or replay', async () => {
+  const { user, api } = await openTrial()
+  await evidenceStage(user)
+  fireEvent.change(screen.getByRole('slider', { name: 'Seek evidence replay' }), { target: { value: '10' } })
+  await generate(user)
+  expect(screen.getByRole('slider', { name: 'Seek evidence replay' }).value).toBe('10')
+  expect(screen.getByText(AI_COPY.evidence)).toBeTruthy()
+  await user.click(screen.getByRole('button', { name: 'Return to match', exact: true }))
+  expect(screen.getByLabelText('Match clock').textContent).toBe('00:15')
+  expect(api.generateAiTrial).toHaveBeenCalledTimes(1)
 })
 
 it('supports keyboard generation and citation review', async () => {

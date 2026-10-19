@@ -5,6 +5,14 @@ Its five stages remain: The case → Evidence → Both sides → Your verdict �
 ruling. The match engine and backend inference implementation are unchanged.
 No live inference was used to implement or test this phase.
 
+There is one cinematic courtroom, with the original bench, opposing podiums
+and stage navigation. The separate AI introduction panel has been removed.
+**Begin trial** remains the primary entry and starts with recorded evidence.
+The small **Generate AI Trial** action below it is optional. It also stays
+available inside subsequent stages, so the user can review the record first.
+Choosing it updates this same proceeding with validated AI analysis; it does
+not open another courtroom or restart the five-stage flow.
+
 ## Explicit generation and cost protection
 
 Open an eligible case and choose **Generate AI Trial**. This is the only frontend
@@ -35,12 +43,12 @@ timers or invented agent completions are used.
 
 | Area | Behavior |
 | --- | --- |
-| Header | Generation action, source badge and planned four-agent order |
+| Within the current stage | Compact source badge, optional generation action and honest loading/failure status; secondary to Begin trial |
 | Evidence | Existing replay, verified fact/value cards and a separately labeled Evidence-agent interpretation |
-| Both sides | Opposing submissions, uncertainty, verified quantities and clickable citations |
+| Both sides | Original prosecution/defense podiums select the corresponding AI argument when available; otherwise the recorded submissions |
 | Your verdict | Existing session vote, independent of AI generation and judgment |
 | The ruling | Findings, assessments of both sides, confidence and uncertainty, shown after a recorded vote |
-| How the AI reached this decision | Collapsible actual trace, handoffs, validation status, fingerprints and request counts |
+| How the AI reached this decision | Small, initially closed disclosure beneath the courtroom floor: actual trace, handoffs, validation status, fingerprints and request counts; planned roles are explicitly labeled when no execution record exists |
 
 Source labels come from the response: `live_ai` → **Live AI trial**, `cached_ai`
 → **Cached AI trial**, and `deterministic_fallback` → **Recorded-evidence
@@ -52,7 +60,10 @@ never presented as the ruling.
 
 Generation does not change the trial stage, unlock the ruling, reset a vote or
 send that vote to a model. Generating after voting retains the opinion even if
-the AI judge disagrees. Before voting, neither the AI judge's result nor its
+the AI judge disagrees. A selected but unsubmitted vote and the evidence cursor
+also survive the arrival of AI results. The judge uses one ruling component,
+with either the AI assessment or the recorded assessment. Before voting,
+neither the AI judge's result nor its
 reasoning is rendered, including inside trace details.
 
 ## Evidence boundary and citations
@@ -91,8 +102,10 @@ backend live switches disabled for ordinary manual testing. Existing `/api`
 proxy and `VITE_API_BASE_URL` conventions are reused. Never put Azure credentials
 in `VITE_` variables or send them from the browser.
 
-Seek until a case is eligible, open it, and try Generate AI Trial with the backend
-disabled. Verify fallback labeling, the five-stage journey, clickable citations,
+Seek until a case is eligible and open it. Choose **Begin trial** to hear the
+recorded case without a generation request. Then try the optional **Generate AI
+Trial** action within Evidence with the backend disabled. Verify fallback
+labeling, the five-stage journey, clickable citations,
 separate voting and exact paused return position. Loading, success, cached and
 error states can all be tested with mocked responses:
 
@@ -110,7 +123,8 @@ duplicate clicks, StrictMode, source attribution, grounding, trace order, voting
 replay preservation, citations, late responses, fallback and sanitized errors.
 Existing replay regressions use the local deterministic backend without
 inference. Interaction tests and mocked desktop/mobile browser journeys cover
-keyboard behavior, overflow and the complete flow. The production bundle has no
+keyboard behavior, overflow, recorded and AI five-stage flows, sealed rulings,
+and delayed AI arrival without losing the user's selection. The production bundle has no
 Azure credential fields or provider SDK.
 
 ## Safest later controlled live trial

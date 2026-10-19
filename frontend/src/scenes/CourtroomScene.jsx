@@ -17,7 +17,8 @@ import CounselPodium from '../components/courtroom/CounselPodium.jsx'
 import ArgumentHearing from '../components/courtroom/ArgumentHearing.jsx'
 import UserVerdict from '../components/courtroom/UserVerdict.jsx'
 import JudgeVerdict from '../components/courtroom/JudgeVerdict.jsx'
-import AiTrialPanel from '../components/courtroom/AiTrialPanel.jsx'
+import TrialAnalysisControls from '../components/courtroom/TrialAnalysisControls.jsx'
+import AgentTrace from '../components/courtroom/AgentTrace.jsx'
 import VerifiedEvidenceFile from '../components/courtroom/VerifiedEvidenceFile.jsx'
 import { adaptCourtroomResponse } from '../domain/aiCourtroom.js'
 import './CourtroomScene.css'
@@ -65,6 +66,8 @@ function TrialRoom({ trial, invalid }) {
   const incidentScore = scoreAt(trial.knownEvents, trial.incidentTimestamp)
   const home = clubFor(matchData, 'home'),
     away = clubFor(matchData, 'away')
+  const analysisControls = <TrialAnalysisControls trial={trial} request={aiTrial}
+    available={aiTrialAvailable} invalid={invalid} onGenerate={generateAiTrial} />
   return (
     <main className="courtroom-scene">
       <div className="court-docket">
@@ -92,8 +95,6 @@ function TrialRoom({ trial, invalid }) {
           INCIDENT <time>{formatClock(trial.incidentTimestamp)}</time>
         </span>
       </div>
-      <AiTrialPanel trial={trial} request={aiTrial} available={aiTrialAvailable}
-        invalid={invalid} onGenerate={generateAiTrial} />
       <div className={`court-room stage-${trialStage}`}>
         <CourtroomSet />
         <JudgeBench stage={trialStage} />
@@ -116,8 +117,9 @@ function TrialRoom({ trial, invalid }) {
             role="group"
             aria-label={TRIAL_STAGES[stageIndex].label}
           >
+            {trialStage !== 'introduction' ? analysisControls : null}
             {trialStage === 'introduction' ? (
-              <CaseIntroduction trial={trial} onBegin={advanceTrial} />
+              <><CaseIntroduction trial={trial} onBegin={advanceTrial} />{analysisControls}</>
             ) : null}
             {trialStage === 'evidence' ? (
               <><EvidencePlayer
@@ -161,6 +163,7 @@ function TrialRoom({ trial, invalid }) {
             onSelect={() => changeSide('defense')}
           />
         </div>
+        <AgentTrace trial={trial} loading={aiTrial?.status === 'loading'} />
       </div>
       <TrialProgress
         stage={trialStage}
