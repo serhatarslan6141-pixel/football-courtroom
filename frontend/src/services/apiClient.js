@@ -31,6 +31,12 @@ export function createApiClient({
     createMatch(signal) {
       return request('/api/matches', signal, { method: 'POST' })
     },
+    prepareTrial(id, caseId, timestamp, signal) {
+      return request(`${matchPath(id)}/cases/${encodeURIComponent(caseId)}/courtroom/prepare`, signal, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ through_timestamp: timestamp }),
+      })
+    },
     generateAiTrial(id, caseId, timestamp, signal) {
       return request(`${matchPath(id)}/cases/${encodeURIComponent(caseId)}/courtroom`, signal, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

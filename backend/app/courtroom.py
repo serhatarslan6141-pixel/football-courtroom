@@ -124,8 +124,19 @@ class TrialService:
         self.transport = transport
 
     async def analyze(self, match, case_id: str, through_timestamp: int, *, allow_live=False):
+        return await self._resolve(match, case_id, through_timestamp, allow_live=allow_live)
+
+    async def prepare(self, match, case_id: str, through_timestamp: int):
+        """Return cached/fallback content, or None if generation needs consent.
+
+        This path cannot import/run the workflow, reserve budget, or write a
+        trial tombstone. It never permits inference, even when live is enabled.
+        """
+        return await self._resolve(match, case_id, through_timestamp, prepare_only=True)
+
+    async def _resolve(self, match, case_id, through_timestamp, *, allow_live=False, prepare_only=False):
         evidence = build_evidence(match, case_id, through_timestamp)
-        if not allow_live:
+        if not allow_live and not prepare_only:
             return fallback(evidence, 'live_not_requested')
         if (os.environ.get('COURTROOM_LIVE_ENABLED', '').lower() != 'true'
                 or os.environ.get('FOUNDRY_LIVE_ENABLED', '').lower() != 'true'):
@@ -158,6 +169,8 @@ class TrialService:
                         validate_submission(role, getattr(cached, 'evidence_agent' if role == 'evidence' else role), evidence)
                     return cached.model_copy(update={'source': 'cached_ai', 'api_attempts': 0,
                         'disclosure': 'Cached AI reasoning over verified synthetic facts; no new model requests.'})
+                if prepare_only:
+                    return None  # A separate, explicitly confirmed request may generate.
                 # Missing framework is reported before any request or tombstone.
                 try:
                     from .courtroom_workflow import execute_trial

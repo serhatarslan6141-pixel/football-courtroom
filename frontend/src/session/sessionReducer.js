@@ -1,4 +1,5 @@
 import { TRIAL_STAGES, VOTE_LABELS, caseAvailableAt, evidenceBounds, voteKey } from '../domain/courtroom.js'
+import { trialIdentity } from '../domain/aiCourtroom.js'
 
 export const initialSession = {
   screen: 'welcome',
@@ -71,15 +72,32 @@ export function sessionReducer(session, action) {
     case 'AI_TRIAL_REQUEST':
       if (session.aiTrials[action.key]) return session
       return { ...session, aiTrials: { ...session.aiTrials,
-        [action.key]: { status: 'loading', requestId: action.requestId } } }
+        [action.key]: { status: 'preparing', requestId: action.requestId } } }
+    case 'AI_TRIAL_CONFIRMATION_REQUIRED':
+    case 'AI_TRIAL_CONFIRMATION_CANCELLED':
+    case 'AI_TRIAL_GENERATING': {
+      const current = session.aiTrials[action.key]
+      const allowed = action.type === 'AI_TRIAL_CONFIRMATION_REQUIRED' ? ['preparing', 'cancelled'] : ['confirmation']
+      if (!allowed.includes(current?.status) || current.requestId !== action.requestId) return session
+      const status = action.type === 'AI_TRIAL_CONFIRMATION_REQUIRED' ? 'confirmation'
+        : action.type === 'AI_TRIAL_GENERATING' ? 'loading' : 'cancelled'
+      return { ...session, aiTrials: { ...session.aiTrials, [action.key]: { ...current, status } } }
+    }
     case 'AI_TRIAL_SUCCEEDED':
     case 'AI_TRIAL_FAILED': {
       const current = session.aiTrials[action.key]
-      if (current?.status !== 'loading' || current.requestId !== action.requestId) return session
-      return { ...session, aiTrials: { ...session.aiTrials, [action.key]: {
-        ...current, status: action.type === 'AI_TRIAL_FAILED' ? 'error' : action.result.source === 'deterministic_fallback' ? 'fallback' : 'ready',
+      if (!['preparing', 'loading'].includes(current?.status) || current.requestId !== action.requestId) return session
+      const next = { ...session, aiTrials: { ...session.aiTrials, [action.key]: {
+        ...current, status: action.type === 'AI_TRIAL_FAILED' ? 'error' : !action.result || action.result.source === 'deterministic_fallback' ? 'fallback' : 'ready',
         result: action.result ?? null,
+        errorCategory: action.errorCategory ?? null,
       } } }
+      const item = session.snapshot?.cases.find((entry) => entry.case_id === session.selectedCaseId)
+      // A response updates only its own case. It never advances another case,
+      // resets an ongoing trial, changes a vote, or unseals the ruling.
+      return session.screen === 'courtroom' && session.trialStage === 'introduction'
+        && session.trialFurthestStage === 0 && action.key === trialIdentity(item, session.matchData)
+        ? sessionReducer(next, { type: 'ADVANCE_TRIAL' }) : next
     }
     case 'RETRY':
       return {

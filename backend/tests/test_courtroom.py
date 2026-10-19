@@ -453,6 +453,95 @@ def test_cached_result_still_respects_live_kill_switch(enabled, wired, match, ev
     assert len(wire.calls) == 4
 
 
+def test_prepare_disabled_is_non_billable_fallback(wired, match, evidence):
+    service, wire = wired
+    result = asyncio.run(service.prepare(match, evidence.case_id, 5400))
+    assert result.source == 'deterministic_fallback'
+    assert result.error_category == 'live_disabled'
+    assert result.api_attempts == 0
+    assert wire.calls == []
+    assert not service.budget.path.exists()
+
+
+def test_prepare_uncached_cannot_execute_workflow_or_reserve_budget(enabled, wired, match, evidence, monkeypatch):
+    service, wire = wired
+    monkeypatch.setitem(sys.modules, 'app.courtroom_workflow', None)
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Preparation must not reserve model budget')
+    monkeypatch.setattr(service.budget, 'reserve', forbidden)
+    for _ in range(3):
+        assert asyncio.run(service.prepare(match, evidence.case_id, 5400)) is None
+    assert wire.calls == []
+    assert not list(service.cache.directory.glob('*.json'))  # No tombstone consumed.
+    assert not service.budget.path.exists()
+
+
+def test_prepare_cached_reuses_validated_result_without_requests(enabled, wired, match, evidence):
+    service, wire = wired
+    original = run(service, match, evidence)
+    ledger = service.budget.path.read_bytes()
+    for _ in range(2):
+        result = asyncio.run(service.prepare(match, evidence.case_id, 5400))
+        assert result.source == 'cached_ai'
+        assert result.api_attempts == 0
+        assert result.original_api_attempts == 4
+        assert result.judge == original.judge
+    assert len(wire.calls) == 4
+    assert service.budget.path.read_bytes() == ledger
+
+
+@pytest.mark.parametrize('status', ['failed', 'in_progress', 'invalid_completed', 'busy'])
+def test_prepare_does_not_regenerate_blocked_or_invalid_cache(enabled, wired, match, evidence, monkeypatch, status):
+    service, wire = wired
+    if status == 'busy':
+        def busy(*args):
+            raise courtroom.CacheBusy()
+        monkeypatch.setattr(service.cache, 'claim', busy)
+        category = 'trial_in_progress'
+    else:
+        monkeypatch.setattr(service.cache, 'read', lambda _: {'status': 'completed' if status == 'invalid_completed' else status})
+        category = 'cache_unavailable' if status == 'invalid_completed' else 'previous_trial_failed_or_incomplete'
+    result = asyncio.run(service.prepare(match, evidence.case_id, 5400))
+    assert result.source == 'deterministic_fallback'
+    assert result.error_category == category
+    assert wire.calls == []
+    assert not service.budget.path.exists()
+
+
+def test_prepare_does_not_bypass_later_kill_switch(enabled, wired, match, evidence, monkeypatch):
+    service, wire = wired
+    assert asyncio.run(service.prepare(match, evidence.case_id, 5400)) is None
+    monkeypatch.setenv('COURTROOM_LIVE_ENABLED', 'false')
+    result = run(service, match, evidence)
+    assert result.error_category == 'live_disabled'
+    assert wire.calls == []
+
+
+def test_prepare_api_contract_rejects_live_opt_in_and_invalid_cutoffs(enabled, wired, match, evidence, monkeypatch):
+    service, wire = wired
+    monkeypatch.setattr(main, 'trial_service', service)
+    monkeypatch.setattr(main, 'require_match', lambda _: match)
+    client = TestClient(main.app)
+    path = f'/api/matches/{match.match_id}/cases/{evidence.case_id}/courtroom/prepare'
+    assert client.post(path, json={'through_timestamp': 5400}).json() == {
+        'status': 'confirmation_required', 'result': None}
+    assert client.post(path, json={'through_timestamp': 5400, 'allow_live': True}).status_code == 422
+    assert client.post(path, json={'through_timestamp': -1}).status_code == 422
+    assert client.post(path, json={'through_timestamp': evidence.evidence_cutoff - 1}).status_code == 404
+    assert wire.calls == []
+    run(service, match, evidence)  # Four mocked framework requests, never Azure.
+    response = client.post(path, json={'through_timestamp': 5400})
+    assert response.status_code == 200
+    assert response.json()['status'] == 'ready'
+    assert response.json()['result']['source'] == 'cached_ai'
+    assert response.json()['result']['api_attempts'] == 0
+    assert len(wire.calls) == 4
+    monkeypatch.setenv('COURTROOM_LIVE_ENABLED', 'false')
+    response = client.post(path, json={'through_timestamp': 5400})
+    assert response.json()['result']['error_category'] == 'live_disabled'
+    assert len(wire.calls) == 4
+
+
 @pytest.fixture(scope='module')
 def varied_match():
     return generate_match(202)

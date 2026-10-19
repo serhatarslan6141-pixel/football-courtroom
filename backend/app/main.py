@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from .case_detection import detect_cases
 from .courtroom import trial_service
-from .courtroom_models import TrialRequest, TrialResult
+from .courtroom_models import TrialPreparation, TrialPreparationRequest, TrialRequest, TrialResult
 from .synthetic_match import calculate_match_state, create_generated_match, get_match, list_available_matches
 
 app = FastAPI(title="Football Courtroom API", version="0.1.0")
@@ -187,6 +187,19 @@ async def analyze_courtroom(match_id: str, case_id: str, request: TrialRequest):
     try:
         return await trial_service.analyze(match, case_id, request.through_timestamp,
                                            allow_live=request.allow_live)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Case not found or not yet available at this replay cutoff.") from None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="The case evidence record is incomplete.") from None
+
+
+@app.post("/api/matches/{match_id}/cases/{case_id}/courtroom/prepare", response_model=TrialPreparation)
+async def prepare_courtroom(match_id: str, case_id: str, request: TrialPreparationRequest):
+    """Non-billable Begin Trial lookup. This endpoint cannot opt into inference."""
+    match = require_match(match_id)
+    try:
+        result = await trial_service.prepare(match, case_id, request.through_timestamp)
+        return TrialPreparation(status='confirmation_required' if result is None else 'ready', result=result)
     except KeyError:
         raise HTTPException(status_code=404, detail="Case not found or not yet available at this replay cutoff.") from None
     except ValueError:

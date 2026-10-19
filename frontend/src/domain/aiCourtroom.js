@@ -28,6 +28,7 @@ function refs(ids, known, allowEmpty = false) {
 
 export function trialFailureMessage(category) {
   const messages = {
+    connection_unavailable: 'The agent connection is unavailable. The court is using deterministic recorded analysis.',
     live_disabled: 'AI is switched off on the backend. The recorded-evidence trial is ready to use.',
     live_not_requested: 'The backend returned a recorded-evidence assessment.',
     configuration_unavailable: 'AI is not configured for this trial. Continue with the recorded evidence.',

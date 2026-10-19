@@ -1,7 +1,7 @@
 import { CourtSeal } from './CourtroomSet.jsx'
 import BroadcastIcon from '../match/BroadcastIcon.jsx'
 
-export default function CaseIntroduction({ trial, onBegin }) {
+export default function CaseIntroduction({ trial, onBegin, busy = false, buttonRef }) {
   return (
     <section className="trial-introduction" aria-labelledby="trial-question">
       <span className="trial-overline">{trial.label} · OPENING THE CASE</span>
@@ -12,8 +12,8 @@ export default function CaseIntroduction({ trial, onBegin }) {
         <span />
       </div>
       <p>{trial.summary}</p>
-      <button className="court-primary" type="button" onClick={onBegin}>
-        Begin trial <BroadcastIcon name="arrow" />
+      <button ref={buttonRef} className="court-primary" type="button" onClick={onBegin} disabled={busy}>
+        {busy ? 'Preparing the court…' : 'Begin trial'} <BroadcastIcon name="arrow" />
       </button>
       <small>Examine the moment. Hear both sides. Make your call.</small>
     </section>

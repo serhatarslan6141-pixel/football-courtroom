@@ -1,9 +1,16 @@
-import { AGENT_ROLES, trialFailureMessage } from '../../domain/aiCourtroom.js'
+import { AGENT_ROLES, isAiSource, trialFailureMessage } from '../../domain/aiCourtroom.js'
+import EvidenceCitations from './EvidenceCitations.jsx'
 
-export default function AgentTrace({ trial, loading }) {
+export default function AgentTrace({ trial, loading, onCite, sealed }) {
+  const references = {
+    evidence: trial.evidenceInterpretation?.eventIds || [],
+    prosecution: trial.arguments.prosecution.flatMap((point) => point.eventIds),
+    defense: trial.arguments.defense.flatMap((point) => point.eventIds),
+    judge: sealed ? [] : trial.assessment.findings.flatMap((point) => point.eventIds),
+  }
   return (
     <details className="agent-trace">
-      <summary>How the AI reached this decision</summary>
+      <summary>Behind the verdict</summary>
       {trial.trace?.length ? <>
         <p>Actual backend execution record. No individual progress was shown before this response arrived.</p>
         <ol>{trial.trace.map((entry, index) => <li key={entry.agent}>
@@ -11,6 +18,9 @@ export default function AgentTrace({ trial, loading }) {
           <span>{entry.status === 'completed' ? 'Submission validated' : 'Stopped; submission withheld'}</span>
           <small>{entry.handoff_to ? `Handed to ${AGENT_ROLES.find((role) => role.id === entry.handoff_to).name}`
             : entry.status === 'completed' ? 'Final ruling returned' : 'No further handoff'}</small>
+          {entry.status === 'completed' && isAiSource(trial.source) && (entry.agent === 'judge' && sealed
+            ? <small>Ruling and its evidence references sealed until your vote.</small>
+            : <EvidenceCitations eventIds={[...new Set(references[entry.agent])]} trial={trial} onCite={onCite} />)}
           <details className="handoff-fingerprints"><summary>Inspect {AGENT_ROLES[index].name} handoff</summary>
             <p>Input fingerprint <code title={entry.input_digest}>{entry.input_digest.slice(0, 12)}…</code></p>
             <p>Validated output <code title={entry.output_digest || ''}>{entry.output_digest ? `${entry.output_digest.slice(0, 12)}…` : 'Withheld'}</code></p>

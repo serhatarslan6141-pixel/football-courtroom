@@ -1,5 +1,5 @@
 /* A stage for one proceeding, scoped away from the match broadcast. */
-.trial-analysis-options, .verified-file-heading {
+.verified-file-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -7,14 +7,17 @@
 }
 .trial-source { flex-shrink: 0; padding: 7px 10px; border: 1px solid #b89d6c45; border-radius: 20px; font-size: 10px; color: #d9c39c; }
 .source-ai { background: #b99bd91c; color: #e2c6ff; border-color: #b99bd962; }
-.trial-analysis { margin: 0 0 20px; padding: 12px 0; border-block: 1px solid #b294cf24; }
-.stage-introduction .trial-analysis { margin: 10px auto 0; max-width: 500px; text-align: center; border-bottom: 0; }
-.stage-introduction .trial-analysis-options { justify-content: center; }
-.court-shell .trial-generate { font-size: 11px; min-height: 38px; padding: 8px 12px; border: 1px solid #b294cf50; border-radius: 3px; color: #dfc9f0; }
-.court-shell .trial-generate:hover:not(:disabled) { background: #b99bd915; border-color: #b99bd9; }
-.court-shell .trial-generate:disabled { opacity: .65; cursor: default; }
-.trial-analysis p { font-size: 11px; line-height: 1.7; color: #bbb0c5; margin: 9px 0 0; }
-.trial-analysis [role='alert'] { color: #ecc8ac; }
+.trial-status { margin: 0 0 18px; text-align: center; }
+.trial-status .trial-source { display: inline-block; }
+.stage-introduction .trial-status { margin: 10px auto 0; max-width: 500px; }
+.trial-status p { font-size: 11px; line-height: 1.7; color: #bbb0c5; margin: 9px 0 0; }
+.trial-status [role='alert'] { color: #ecc8ac; }
+.trial-confirmation { width: min(520px, calc(100vw - 40px)); box-sizing: border-box; border: 1px solid #d6b77970; border-radius: 5px; padding: 30px; color: #e7ddeb; background: #1d1728; box-shadow: 0 20px 90px #000a; }
+.trial-confirmation::backdrop { background: #08060edb; backdrop-filter: blur(4px); }
+.trial-confirmation h2 { font: 400 28px/1.2 Georgia, serif; color: #f3ece0; }
+.trial-confirmation p { color: #c9bfce; font-size: 13px; line-height: 1.8; }
+.trial-confirmation > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-top: 24px; }
+.trial-confirmation .court-primary { gap: 8px; }
 .agent-trace { border-top: 1px solid #b294cf24; margin-top: 20px; padding: 12px 0 0; font-size: 11px; color: #bcaec8; }
 .agent-trace summary { cursor: pointer; color: #c6b5cf; width: fit-content; padding: 3px 0; }
 .agent-trace p { font-size: 11px; line-height: 1.7; max-width: 760px; }
@@ -53,8 +56,8 @@
 .ruling-confidence { color: #cbb797; font-size: 11px; line-height: 1.8; }
 @media (max-width: 780px) {
   .trial-source { font-size: 9px; padding: 6px 8px; max-width: 125px; text-align: center; }
-  .trial-analysis-options { flex-wrap: wrap; gap: 8px; }
-  .trial-analysis p { font-size: 10px; }
+  .trial-status p { font-size: 10px; }
+  .trial-confirmation { padding: 22px; }
   .agent-trace ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .verified-fact-list, .judge-weighing { grid-template-columns: 1fr; }
   .verified-file-heading { align-items: flex-start; }

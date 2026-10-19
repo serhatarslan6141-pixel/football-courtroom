@@ -17,7 +17,8 @@ import CounselPodium from '../components/courtroom/CounselPodium.jsx'
 import ArgumentHearing from '../components/courtroom/ArgumentHearing.jsx'
 import UserVerdict from '../components/courtroom/UserVerdict.jsx'
 import JudgeVerdict from '../components/courtroom/JudgeVerdict.jsx'
-import TrialAnalysisControls from '../components/courtroom/TrialAnalysisControls.jsx'
+import TrialStatus from '../components/courtroom/TrialStatus.jsx'
+import TrialConfirmation from '../components/courtroom/TrialConfirmation.jsx'
 import AgentTrace from '../components/courtroom/AgentTrace.jsx'
 import VerifiedEvidenceFile from '../components/courtroom/VerifiedEvidenceFile.jsx'
 import { adaptCourtroomResponse } from '../domain/aiCourtroom.js'
@@ -36,10 +37,12 @@ function TrialRoom({ trial, invalid }) {
     castCaseVote,
     goToMatch,
     aiTrial,
-    aiTrialAvailable,
-    generateAiTrial,
+    beginTrial,
+    confirmTrial,
+    cancelTrial,
   } = useMatchSession()
   const stageElement = useRef(null)
+  const beginButton = useRef(null)
   useEffect(() => {
     stageElement.current?.focus({ preventScroll: true })
   }, [trialStage])
@@ -66,8 +69,7 @@ function TrialRoom({ trial, invalid }) {
   const incidentScore = scoreAt(trial.knownEvents, trial.incidentTimestamp)
   const home = clubFor(matchData, 'home'),
     away = clubFor(matchData, 'away')
-  const analysisControls = <TrialAnalysisControls trial={trial} request={aiTrial}
-    available={aiTrialAvailable} invalid={invalid} onGenerate={generateAiTrial} />
+  const busy = ['preparing', 'loading'].includes(aiTrial?.status)
   return (
     <main className="courtroom-scene">
       <div className="court-docket">
@@ -117,9 +119,10 @@ function TrialRoom({ trial, invalid }) {
             role="group"
             aria-label={TRIAL_STAGES[stageIndex].label}
           >
-            {trialStage !== 'introduction' ? analysisControls : null}
+            {trialStage !== 'introduction' ? <TrialStatus trial={trial} request={aiTrial} invalid={invalid} /> : null}
             {trialStage === 'introduction' ? (
-              <><CaseIntroduction trial={trial} onBegin={advanceTrial} />{analysisControls}</>
+              <><CaseIntroduction trial={trial} onBegin={beginTrial} busy={busy} buttonRef={beginButton} />
+                <TrialStatus trial={trial} request={aiTrial} invalid={invalid} /></>
             ) : null}
             {trialStage === 'evidence' ? (
               <><EvidencePlayer
@@ -163,8 +166,9 @@ function TrialRoom({ trial, invalid }) {
             onSelect={() => changeSide('defense')}
           />
         </div>
-        <AgentTrace trial={trial} loading={aiTrial?.status === 'loading'} />
+        <AgentTrace trial={trial} loading={aiTrial?.status === 'loading'} onCite={citeEvent} sealed={!caseVote} />
       </div>
+      {aiTrial?.status === 'confirmation' ? <TrialConfirmation onConfirm={confirmTrial} onCancel={cancelTrial} returnFocus={beginButton} /> : null}
       <TrialProgress
         stage={trialStage}
         furthest={trialFurthestStage}

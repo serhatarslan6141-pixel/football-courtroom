@@ -6,12 +6,13 @@ response can supply AI interpretations and a judge ruling, with visible source
 labels, clickable citations and an inspectable trace. The original replay and
 independent voting rules are preserved.
 
-There is one courtroom. **Begin trial** starts the recorded case. The optional
-**Generate AI Trial** control sits beneath that entry action and within later
-stages, replacing the same evidence, podium submissions and ruling with verified
-AI output when available. It never resets the stage, evidence cursor or vote.
-Source and request status stay compact; role descriptions and actual handoffs
-are tucked into **How the AI reached this decision** beneath the courtroom floor.
+There is one courtroom and one **Begin trial** entry. It performs a non-billable
+preparation request. Disabled AI automatically supplies deterministic fallback;
+a validated cache hit supplies the agents' existing analysis. Only an uncached,
+live-enabled case asks for explicit Azure charge confirmation. After resolution,
+the same five stages present the evidence, opposing submissions, independent
+vote and sealed ruling. **Behind the verdict** contains actual handoffs and
+verified evidence references beneath the courtroom floor.
 
 The courtroom presents one eligible case as a five-stage trial: introduction → evidence → opposing submissions → user vote → preliminary ruling. Its room, bench and lecterns are SVG/CSS, with responsive layouts and reduced-motion support. The football simulator, API and case detectors are unchanged.
 
@@ -23,7 +24,7 @@ The courtroom presents one eligible case as a five-stage trial: introduction →
 | --- | --- |
 | `CourtroomSet`, `JudgeBench`, `CounselPodium` | Physical room, central bench, opposing sides and the active speaker |
 | `CaseIntroduction` | API case question, incident description and Begin trial |
-| `TrialAnalysisControls`, `AgentTrace` | Optional explicit AI generation and source/status inside the stage; small collapsible workflow disclosure within the courtroom |
+| `TrialConfirmation`, `TrialStatus`, `AgentTrace` | Explicit charge confirmation only for uncached live generation; compact provenance/status and Behind the verdict disclosure |
 | `TrialProgress` | Current stage and navigation to reached stages |
 | `EvidencePlayer` | Recorded pitch replay, build-up/incident/aftermath clips, play/pause, restart, seeking and slow motion |
 | `ArgumentHearing` | One case submission at a time; switch sides, advance submissions or inspect the incident |
@@ -55,7 +56,7 @@ The three current case questions concern significance or cause and effect. The a
 
 The result is labeled preliminary and explicitly described as an assessment from recorded evidence; no AI judge has evaluated it. Counterpoints are opposing submissions, not automatically accepted findings.
 
-## Future response interface
+## Presentation interface
 
 The UI consumes a `TrialPresentation` v1 object produced by `createTrialPresentation`:
 
@@ -74,7 +75,11 @@ assessment {
 
 `citation` identifies the source evidence/counterevidence index; `eventIds` links recorded facts to the match log. Presentation components read these objects instead of knowing how submissions or assessments were produced. Ruling labels, explanations, findings and disclosure are data fields rather than agent-specific UI code.
 
-Microsoft Foundry integration can later supply the two sides and judge assessment behind this boundary. That work still needs a backend response contract, agent prompts/orchestration, explicit source attribution, citation/cutoff validation, match/case request versioning, and loading/error/fallback handling. Supplied responses must never replace the session's recorded event log, eligibility rules or vote-before-ruling guard. No agent requests, credentials, SDKs or simulated agent responses are implemented in Step 3.
+Phase 4B supplies the real Microsoft Agent Framework workflow, and Phase 4C
+adapts its validated result into this interface. Begin trial uses the non-billable
+preparation contract documented in [Phase 4C](phase4c.md). Supplied responses
+never replace the recorded event log, eligibility rules or vote-before-ruling
+guard. Credentials and model SDKs stay on the backend.
 
 ## Validation
 

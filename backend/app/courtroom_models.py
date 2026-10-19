@@ -10,8 +10,11 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
 
 
-class TrialRequest(StrictModel):
+class TrialPreparationRequest(StrictModel):
     through_timestamp: int = Field(ge=0, le=20000)
+
+
+class TrialRequest(TrialPreparationRequest):
     allow_live: bool = False
 
 
@@ -115,3 +118,8 @@ class TrialResult(StrictModel):
     http_status: Optional[int]
     cache_key: Optional[str]
     configuration_version: str
+
+
+class TrialPreparation(StrictModel):
+    status: Literal['ready', 'confirmation_required']
+    result: Optional[TrialResult] = None

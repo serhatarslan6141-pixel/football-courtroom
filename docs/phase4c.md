@@ -1,113 +1,126 @@
-# Phase 4C: the AI courtroom experience
+# Phase 4C: one agent-powered courtroom
 
-The existing purple/gold courtroom now consumes the Phase 4B trial response.
-Its five stages remain: The case → Evidence → Both sides → Your verdict → The
-ruling. The match engine and backend inference implementation are unchanged.
-No live inference was used to implement or test this phase.
+The synthetic match engine supplies the facts. Four Microsoft Agent Framework
+agents interpret those facts. The existing purple/gold courtroom displays their
+work in five stages: **The Case → Evidence → Both Sides → Your Verdict → The
+Ruling**. There is one room, one pair of podium panels and one judge. The standalone
+AI generation control and recorded-versus-AI chooser have been removed.
 
-There is one cinematic courtroom, with the original bench, opposing podiums
-and stage navigation. The separate AI introduction panel has been removed.
-**Begin trial** remains the primary entry and starts with recorded evidence.
-The small **Generate AI Trial** action below it is optional. It also stays
-available inside subsequent stages, so the user can review the record first.
-Choosing it updates this same proceeding with validated AI analysis; it does
-not open another courtroom or restart the five-stage flow.
+## What Begin trial does
 
-## Explicit generation and cost protection
+Opening a case shows its introduction and **Begin trial**, without requesting
+trial preparation or inference. Only clicking Begin trial starts this flow:
 
-Open an eligible case and choose **Generate AI Trial**. This is the only frontend
-action that calls `POST /api/matches/{match_id}/cases/{case_id}/courtroom` with
-`allow_live: true` and the integer replay position at courtroom entry. It sends
-neither a free-text prompt nor the user's vote. It cannot enable backend live
-switches. With the usual disabled configuration, this returns a recorded-evidence
-fallback with no Azure request.
+1. The frontend posts the integer replay entry position to
+   `POST /api/matches/{match_id}/cases/{case_id}/courtroom/prepare`.
+   This strict contract accepts only `through_timestamp`; it rejects `allow_live`
+   and prompts. The preparation path cannot execute the model workflow, reserve
+   daily budget or write an inference tombstone.
+2. If either backend live switch is disabled, preparation returns deterministic
+   fallback. The Evidence stage opens automatically, labeled **Deterministic
+   fallback**. No confirmation or generation request is made.
+3. With both live switches enabled and valid configuration, a completed matching
+   cache record is validated and returned as **Cached AI analysis**, with zero
+   new model attempts. Evidence opens directly without charge confirmation.
+4. An enabled case without a cache record returns `confirmation_required`.
+   A native modal explains that generation may incur a small Azure API charge,
+   using up to four model requests. **Cancel** (or Escape) returns to the case
+   without generation. Clicking Begin again reopens confirmation without
+   repeating preparation.
+5. Only **Confirm & begin trial** posts to the existing `/courtroom` endpoint
+   with `allow_live: true`. While the agents work, Begin is disabled, generic
+   progress is honest, and the trial remains at the introduction. The endpoint
+   does not stream individual agent progress. On completion, Evidence opens
+   with **Live AI analysis**; a backend cache race can instead return cached AI.
+6. A disabled switch, failed/incomplete trial record, invalid cache, unavailable
+   backend, network failure or invalid output uses the same deterministic
+   proceeding. No partial AI ruling is presented and no automatic retry occurs.
 
-`MatchSessionProvider.generateAiTrial` runs directly from the click handler,
-never an effect. A synchronous ref locks before React renders a disabled button.
-Reducer state tracks loading, ready, fallback and error, keyed by match, case,
-seed and evidence bounds. Rerenders, StrictMode effect replay, navigation and
-evidence playback cannot generate automatically. Returning to the same case
-reuses its session result. Late responses stay scoped to their original case.
+The frontend never loads or enables backend live configuration. It sends neither
+free-text prompts nor the user's vote. The backend rechecks both live switches
+and all original limits when a confirmed request arrives. A switch changed after
+preparation therefore still blocks generation. Disabled mode also respects the
+existing kill-switch behavior of withholding cached AI.
 
-There is only one generation submission per case identity in the mounted browser
-session, including failed submissions. A network failure may have reached Azure,
-so there is no automatic retry, polling or regeneration button. Reloading resets
-browser state; the backend's durable cache, locks, failed/incomplete records and
-daily budget remain the final protection against duplicate model calls.
+## Content in the existing five stages
 
-While loading, users can continue the recorded trial. The endpoint does not
-stream individual progress, so the UI shows only honest generic progress. No
-timers or invented agent completions are used.
-
-## Presentation and independent voting
-
-| Area | Behavior |
+| Stage / area | Content |
 | --- | --- |
-| Within the current stage | Compact source badge, optional generation action and honest loading/failure status; secondary to Begin trial |
-| Evidence | Existing replay, verified fact/value cards and a separately labeled Evidence-agent interpretation |
-| Both sides | Original prosecution/defense podiums select the corresponding AI argument when available; otherwise the recorded submissions |
-| Your verdict | Existing session vote, independent of AI generation and judgment |
-| The ruling | Findings, assessments of both sides, confidence and uncertainty, shown after a recorded vote |
-| How the AI reached this decision | Small, initially closed disclosure beneath the courtroom floor: actual trace, handoffs, validation status, fingerprints and request counts; planned roles are explicitly labeled when no execution record exists |
+| The Case | Existing cinematic case question, Begin trial, and the charge confirmation only when necessary |
+| Evidence | Original pitch replay and match timestamps; verified Evidence Agent findings, with its interpretation separately labeled |
+| Both Sides | The existing prosecution and defense podiums select the respective agents' arguments, uncertainty and clickable supporting facts |
+| Your Verdict | Independent user choice; the judge's finding remains absent from rendered content |
+| The Ruling | One judge component presents the agent ruling, reasoning, findings, confidence and uncertainty after the user records a vote |
+| Behind the verdict | Small initially closed disclosure: actual execution status, ordered handoffs, validated evidence references, fingerprints and attempt counts |
 
-Source labels come from the response: `live_ai` → **Live AI trial**, `cached_ai`
-→ **Cached AI trial**, and `deterministic_fallback` → **Recorded-evidence
-fallback**. Session reuse retains the original source; the browser does not
-relabel it as a backend cache hit. Cached traces describe original generation
-and explicitly show zero new model attempts. Failures retain the existing
-deterministic arguments and inconclusive assessment. Partial AI outputs are
-never presented as the ruling.
+Fallback uses the same components with deterministic recorded submissions and an
+explicitly disclosed inconclusive assessment. Provenance is a compact label,
+not another trial or mode selector. Session reuse retains original provenance;
+only a backend cache response receives the cached label.
 
-Generation does not change the trial stage, unlock the ruling, reset a vote or
-send that vote to a model. Generating after voting retains the opinion even if
-the AI judge disagrees. A selected but unsubmitted vote and the evidence cursor
-also survive the arrival of AI results. The judge uses one ruling component,
-with either the AI assessment or the recorded assessment. Before voting,
-neither the AI judge's result nor its
-reasoning is rendered, including inside trace details.
+The trace never invents completed agents. Without a trace it labels roles as a
+planned workflow. Partial failed outputs and their references remain withheld.
+Judge reasoning and judge-specific evidence references remain sealed before the
+user votes, including inside Behind the verdict. Input/output fingerprints
+identify handoffs without displaying prompts or raw model output.
 
-## Evidence boundary and citations
+## Cost and state safeguards
 
-`domain/aiCourtroom.js` adapts responses to the existing presentation model. It
-checks match/case identity, available seed, incident time and exact window; a
-complete unique event file against the local log; fact references and selected
-values; event references belonging to cited facts; trace order, source/attempt
-metadata, opposing stances and the ruling's uncertainty fields.
+`MatchSessionProvider.beginTrial` and `confirmTrial` are event handlers, never
+effects. Separate synchronous per-case locks protect preparation and confirmed
+generation before React can disable buttons. State records preparation,
+confirmation, cancellation, generation, ready, fallback and error, keyed by
+match, case, seed and evidence bounds. Navigation, StrictMode, rerenders and
+replay cannot submit work. Returning to a case reuses its session result; failed
+requests are not retried in that session.
 
-An invalid reference rejects the response rather than trimming citations while
-retaining an unsupported claim. The backend computes statistical facts; the
-frontend checks their connection to the local case record. Neither layer proves
-all natural-language reasoning semantically correct. Raw JSON, internal IDs,
-prompts and credentials are not used as courtroom copy.
+The backend's durable cache, single-flight locks, incomplete/failed tombstones,
+daily ledger, conservative role budgets and per-trial limit remain authoritative.
+Preparation does not consume model allowance. Confirmed generation still has
+zero SDK retries. A fresh complete trial normally makes four model calls; a
+cached trial makes none. A browser timeout may have reached Azure, so the UI
+does not infer zero usage from a network error.
 
-Citation buttons show event type and match time. Selecting one opens the existing
-Evidence stage at that completed event, pauses its playback and identifies the
-cited moment. Both the adapter and component enforce case bounds. Larger lists
-are expandable. The pitch uses the original event log; model text never replaces
-it. The evidence cursor remains separate from the match cursor, so leaving court
-restores the exact original replay position, paused.
+Trial results stay scoped to the original case. A late response cannot advance
+another case or reset an ongoing stage, evidence cursor or vote. The source
+adapter supplies one assessment to the existing judge; it never overwrites the
+user's opinion or bypasses vote gating.
+
+## Evidence and replay boundaries
+
+`domain/aiCourtroom.js` checks match/case identity, seed, incident time and exact
+window; the complete event file against local records; fact values and their
+references; supporting references for agent interpretations; actual trace order,
+source/attempt metadata, opposing stances and uncertainty fields.
+
+Invalid references reject the whole response. The backend computes match facts;
+the frontend verifies their relationship to the authorized local record. Neither
+layer proves every natural-language interpretation semantically correct.
+
+Citation buttons in arguments, evidence, the unsealed ruling and the trace seek
+the bounded Evidence replay to the completed event. They never seek outside the
+case window or replace the synthetic log. Leaving court restores the exact
+original match replay position, paused. The simulator is unchanged.
 
 ## Local testing without Azure charges
 
-After preparing the Python 3.12 environment and frontend dependencies described
-in the README, run from the project root:
+Prepare dependencies as described in the README, then run from the project root:
 
 ```bash
 ./scripts/start-dev.sh
 ```
 
-Alternatively, run `./scripts/start-backend.sh` and `npm run dev` from `frontend/`
-in separate terminals. The scripts do not load `.env` or enable AI. Keep both
-backend live switches disabled for ordinary manual testing. Existing `/api`
-proxy and `VITE_API_BASE_URL` conventions are reused. Never put Azure credentials
-in `VITE_` variables or send them from the browser.
+Alternatively run `./scripts/start-backend.sh` and `npm run dev` in `frontend/`
+in separate terminals. Scripts use the Python 3.12 framework environment and do
+not load `.env` or enable AI. Keep `FOUNDRY_LIVE_ENABLED` and
+`COURTROOM_LIVE_ENABLED` disabled for normal development. Existing `/api` proxy
+and `VITE_API_BASE_URL` conventions remain. Never put Azure credentials in
+frontend variables.
 
-Seek until a case is eligible and open it. Choose **Begin trial** to hear the
-recorded case without a generation request. Then try the optional **Generate AI
-Trial** action within Evidence with the backend disabled. Verify fallback
-labeling, the five-stage journey, clickable citations,
-separate voting and exact paused return position. Loading, success, cached and
-error states can all be tested with mocked responses:
+Seek until a case is eligible, open it and click Begin trial. With switches
+disabled, verify automatic fallback, the five stages, independent voting,
+clickable citations and exact paused return position. Confirmation, live/cached
+content and failures are tested with mocked responses, never Azure:
 
 ```bash
 cd frontend
@@ -115,44 +128,42 @@ npm test
 npm run lint
 npm run build
 cd ..
-PYTHONPATH=backend .venv/phase4b/bin/python -m pytest -q backend/tests
+COURTROOM_LIVE_ENABLED=false FOUNDRY_LIVE_ENABLED=false PYTHONPATH=backend .venv/phase4b/bin/python -m pytest -q backend/tests
 ```
 
-New frontend tests mock every AI request. They cover explicit generation, rapid
-duplicate clicks, StrictMode, source attribution, grounding, trace order, voting,
-replay preservation, citations, late responses, fallback and sanitized errors.
-Existing replay regressions use the local deterministic backend without
-inference. Interaction tests and mocked desktop/mobile browser journeys cover
-keyboard behavior, overflow, recorded and AI five-stage flows, sealed rulings,
-and delayed AI arrival without losing the user's selection. The production bundle has no
-Azure credential fields or provider SDK.
+Frontend tests cover explicit Begin/confirmation, cancellation, duplicate clicks,
+StrictMode, cache reuse, disabled/failed preparation, grounding, source labels,
+traces, sealed judging, voting, replay and late responses. Backend tests run the
+actual framework with MockTransport and forbid real sockets. They verify that
+preparation cannot invoke the workflow or reserve budget, and test cache,
+kill-switch, API validation and duplicate/budget protections. Mocked Chrome
+journeys cover desktop/mobile, native dialog focus/Escape, all five stages and
+replay preservation with nonlocal requests blocked.
 
 ## Safest later controlled live trial
 
-No live trial was run here. After separate explicit approval:
+No live inference was run during this implementation or its tests. After separate
+explicit approval:
 
-1. Use the backend-only setup in [Phase 4B](phase4b.md#controlled-live-trial-later)
-   to load credentials privately and enable both live switches only for that
-   process. Keep frontend processes free of backend credentials.
-2. Verify deployment, conservative role budgets, zero retries, a maximum of four
-   calls and enough remaining daily allowance. Select one eligible match/case.
-3. Click Generate AI Trial once. Do not refresh, duplicate tabs, resubmit or
-   reset cache/ledger files while pending.
-4. Inspect source, citations and trace. A fresh complete trial uses four model
-   attempts; cached AI uses zero new attempts. On failure, stop and investigate
-   the sanitized category before authorizing more generation.
-5. Stop the enabled backend process afterward. No `.env` edits are required.
+1. Follow [Phase 4B](phase4b.md#controlled-live-trial-later) to load credentials
+   privately into only the backend process. Enable both switches only there.
+2. Verify deployment, role budgets, zero retries, maximum four model calls and
+   remaining daily allowance. Select one eligible case.
+3. Click Begin trial. A cache hit costs no new requests; otherwise review the
+   charge dialog and explicitly choose Confirm & begin trial once.
+4. Do not refresh, duplicate tabs or reset cache/ledger while pending. Inspect
+   source, citations and actual trace. Stop on failure before authorizing more.
+5. Stop the enabled backend afterward. No `.env` edit is needed.
 
 ## Remaining limitations
 
-- No streaming or cancellation/resume UI. Generation may continue after
-  navigation; navigating never silently resubmits it.
-- Votes, frontend locks and results last for the mounted browser session, not
-  across tabs or reloads. The backend cache remains authoritative.
-- A failed/disabled submission cannot be retried in the same case/session. This
-  favors avoiding duplicate charges over one-click recovery.
-- Live four-agent quality remains unverified. Truncation, invalid grounding or
-  conservative wording checks may still produce fallback.
-- The backend remains a local demo with POSIX file locking and no public
-  billable-service authentication/rate-limiting layer. Public live hosting needs
-  a separate security review.
+- No streaming or cancellation of an already confirmed workflow. Navigating away
+  may leave it running; navigation never resubmits it.
+- Frontend votes and locks last for the mounted session, not across tabs/reloads.
+  Backend records remain authoritative; every new uncached billable generation
+  still requires confirmation in the UI.
+- Failed/disabled cases are not regenerated in the same mounted session.
+- Live four-agent quality remains unverified. Truncation or invalid grounding can
+  still produce fallback.
+- This remains a local demo using POSIX locks, without public billable-service
+  authentication/rate limiting. Public live hosting needs a separate review.

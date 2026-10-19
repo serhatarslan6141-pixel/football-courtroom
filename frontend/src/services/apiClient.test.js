@@ -84,3 +84,14 @@ it('generates a trial only on explicit invocation using encoded IDs and the mini
     body: JSON.stringify({ through_timestamp: 100, allow_live: true }),
   })
 })
+
+it('prepares a trial with no live opt-in or credentials in the request', async () => {
+  const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ status: 'confirmation_required', result: null }) }))
+  const client = createApiClient({ baseUrl: '', fetchImpl })
+  const controller = new AbortController()
+  await client.prepareTrial('match/a', 'case/b', 100, controller.signal)
+  expect(fetchImpl).toHaveBeenCalledExactlyOnceWith('/api/matches/match%2Fa/cases/case%2Fb/courtroom/prepare', {
+    signal: controller.signal, method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ through_timestamp: 100 }),
+  })
+})
