@@ -77,6 +77,13 @@ class EvidenceSubmission(StrictModel):
     uncertainty: str = Field(min_length=12, max_length=500)
 
 
+class EvidenceSelection(StrictModel):
+    """Private model task: prioritize existing facts, never reconstruct records."""
+    fact_ids: list[str] = Field(min_length=1, max_length=3)
+    explanation: str = Field(min_length=8, max_length=240)
+    uncertainty: str = Field(min_length=12, max_length=180)
+
+
 class Argument(StrictModel):
     stance: Literal['support', 'challenge']
     points: list[GroundedPoint] = Field(min_length=1, max_length=3)

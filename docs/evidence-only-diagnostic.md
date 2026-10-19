@@ -1,9 +1,16 @@
 # Isolated Evidence-only diagnostic
 
-This harness is prepared and mock-tested. **No live diagnostic was run.** Execute
-the live command only after separate explicit approval for its potentially
-billable request. It starts no backend server and does not use the browser's
-four-agent Begin trial action.
+The original allocation below has since completed and remains consumed. A new,
+separately prepared allocation for a different unblocked case is documented in
+[Evidence schema diagnostic](evidence-schema-diagnostic.md). Its fixed
+`--schema-check` selector does not reset or reuse the original record. Preparation
+is complete; live execution still requires separate explicit approval.
+
+This original harness was mock-tested, then executed once with explicit approval.
+Its completed record remains consumed. The command examples below document that
+original allocation; they do not authorize another run. The fresh schema-check
+allocation has its own preparation guide above. Neither path starts a backend
+server or uses the browser's four-agent Begin trial action.
 
 ## Exact scope
 
@@ -37,8 +44,9 @@ PYTHONPATH=backend .venv/phase4b/bin/python -m app.diagnose_evidence
 PYTHONPATH=backend .venv/phase4b/bin/python -m app.diagnose_evidence --live
 ```
 
-There are no CLI switches for alternate cases, repeat/force/reset, arbitrary
-prompts, credentials, endpoints or running the full trial. Do not substitute the
+There are no CLI switches for arbitrary cases, repeat/force/reset, arbitrary
+prompts, credentials, endpoints or running the full trial. The fixed
+`--schema-check` selector is the separately prepared allocation above. Do not substitute the
 Phase 4A connection probe or the normal courtroom endpoint.
 
 The live command privately reads the root `.env` without interpolation. Missing

@@ -17,7 +17,7 @@ from app import courtroom
 from app.courtroom_evidence import build_evidence
 from app.foundry import FoundrySettings
 from app.synthetic_match import get_match
-from test_courtroom import MockWire
+from test_courtroom import MockWire, assert_azure_evidence_schema, evidence_fact_choices
 
 
 @pytest.fixture(autouse=True)
@@ -136,6 +136,12 @@ def test_success_only_constructs_and_runs_evidence_with_no_edges(wired, monkeypa
     body = wired['wire'].calls[0][1]
     assert body['model'] == 'gpt-4.1-mini' and body['max_output_tokens'] == 768
     assert body['store'] is False and not body.get('tools')
+    schema = body['text']['format']['schema']
+    assert_azure_evidence_schema(schema)
+    evidence = build_evidence(get_match(diagnostic.MATCH_ID), diagnostic.CASE_ID, diagnostic.CUTOFF)
+    expected = [fact.fact_id for fact in evidence.facts]
+    assert evidence_fact_choices(schema) == expected
+    assert body['text']['format']['strict'] is True
     assert report['diagnostics']['max_output_tokens'] == 768
     assert len(report['diagnostics']['prompt_digest']) == 64
     records = list(wired['cache'].directory.glob('*.json'))
@@ -157,7 +163,7 @@ def test_success_only_constructs_and_runs_evidence_with_no_edges(wired, monkeypa
 
 @pytest.mark.parametrize('failure,category,reason', [
     ('malformed', 'invalid_agent_output', 'schema_validation_failed'),
-    ('citation', 'invalid_agent_output', 'unknown_event_reference'),
+    ('citation', 'invalid_agent_output', 'unknown_fact_reference'),
     ('truncated', 'invalid_agent_output', 'response_not_completed'),
     ('dns', 'dns_failure', 'dns_failure'),
     ('timeout', 'timeout', 'timeout'),
@@ -170,7 +176,7 @@ def test_failures_capture_only_sanitized_metadata_and_block_repeats(wired, failu
     if failure == 'malformed':
         wire.outputs['evidence'] = '{fake-secret-never-output'
     elif failure == 'citation':
-        wire.outputs['evidence']['event_ids'].append('fake-secret-never-output')
+        wire.outputs['evidence']['fact_ids'] = ['fake-secret-never-output']
     elif failure == 'truncated':
         wire.response_status = 'incomplete'
         wire.response_transform = lambda body: {**body,

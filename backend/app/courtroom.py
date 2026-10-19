@@ -119,6 +119,17 @@ def fallback(evidence, reason, state=None, key=None) -> TrialResult:
     )
 
 
+def trial_cache_key(evidence, settings, config):
+    """Shared identity; diagnostics can inspect eligibility without writes."""
+    return digest({
+        'evidence': evidence.model_dump(), 'configuration_version': CONFIGURATION_VERSION,
+        'deployment': settings.deployment, 'resource': settings.base_url,
+        'output_tokens': config.output_tokens, 'max_calls': config.max_calls,
+        'agent_output_tokens': config.agent_output_tokens,
+        'max_input_bytes': config.max_input_bytes,
+    })
+
+
 class TrialService:
     def __init__(self, cache=None, budget=None, transport=None):
         self.cache = cache if cache is not None else TrialCache()
@@ -149,13 +160,7 @@ class TrialService:
             config = TrialConfig.from_env()
         except FoundryUnavailable:
             return fallback(evidence, 'configuration_unavailable')
-        key = digest({
-            'evidence': evidence.model_dump(), 'configuration_version': CONFIGURATION_VERSION,
-            'deployment': settings.deployment, 'resource': settings.base_url,
-            'output_tokens': config.output_tokens, 'max_calls': config.max_calls,
-            'agent_output_tokens': config.agent_output_tokens,
-            'max_input_bytes': config.max_input_bytes,
-        })
+        key = trial_cache_key(evidence, settings, config)
         state = TrialState(evidence)
         try:
             with self.cache.claim(key):

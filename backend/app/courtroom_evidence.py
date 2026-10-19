@@ -23,11 +23,18 @@ class InvalidAgentOutput(Exception):
         'event_not_supported_by_fact', 'wrong_submission_type',
         'observation_value_mismatch', 'missing_trigger_reference',
         'invalid_stance', 'missing_structured_value',
+        'duplicate_fact_reference', 'missing_fact_support',
     })
 
-    def __init__(self, reason='validation_failed'):
+    FIELDS = frozenset({'observations[].fact_id', 'interpretation.fact_ids',
+                        'points[].fact_ids', 'findings[].fact_ids', 'selection.fact_ids'})
+    REFERENCE_KINDS = frozenset({'event_id', 'unknown'})
+
+    def __init__(self, reason='validation_failed', *, field=None, reference_kind=None):
         super().__init__('Invalid agent output')
         self.reason = reason if reason in self.REASONS else 'validation_failed'
+        self.field = field if field in self.FIELDS else None
+        self.reference_kind = reference_kind if reference_kind in self.REFERENCE_KINDS else None
 
 
 def digest(value) -> str:
@@ -123,9 +130,14 @@ def validate_submission(role: str, output, evidence: VerifiedEvidence) -> None:
     facts = {fact.fact_id: fact for fact in evidence.facts}
     known_ids = {event.event_id for event in evidence.events}
 
-    def point(item: GroundedPoint):
-        if not set(item.fact_ids) <= facts.keys():
-            raise InvalidAgentOutput('unknown_fact_reference')
+    def unknown_fact(ids, field):
+        unknown = set(ids) - facts.keys()
+        if unknown:
+            raise InvalidAgentOutput('unknown_fact_reference', field=field,
+                reference_kind='event_id' if unknown <= known_ids else 'unknown')
+
+    def point(item: GroundedPoint, field):
+        unknown_fact(item.fact_ids, field)
         if not set(item.event_ids) <= known_ids:
             raise InvalidAgentOutput('unknown_event_reference')
         cited = {event_id for fact_id in item.fact_ids for event_id in facts[fact_id].event_ids}
@@ -137,25 +149,24 @@ def validate_submission(role: str, output, evidence: VerifiedEvidence) -> None:
         if not isinstance(output, EvidenceSubmission):
             raise InvalidAgentOutput('wrong_submission_type')
         for assertion in output.observations:
-            if assertion.fact_id not in facts:
-                raise InvalidAgentOutput('unknown_fact_reference')
+            unknown_fact([assertion.fact_id], 'observations[].fact_id')
             if assertion.value != facts[assertion.fact_id].value:
                 raise InvalidAgentOutput('observation_value_mismatch')
         if not set(output.event_ids) <= known_ids:
             raise InvalidAgentOutput('unknown_event_reference')
         if not set(evidence.trigger_event_ids) <= set(output.event_ids):
             raise InvalidAgentOutput('missing_trigger_reference')
-        point(output.interpretation)
+        point(output.interpretation, 'interpretation.fact_ids')
     elif role in ('prosecution', 'defense'):
         if not isinstance(output, Argument) or output.stance != ('support' if role == 'prosecution' else 'challenge'):
             raise InvalidAgentOutput('invalid_stance')
         for item in output.points:
-            point(item)
+            point(item, 'points[].fact_ids')
     else:
         if not isinstance(output, Ruling):
             raise InvalidAgentOutput('wrong_submission_type')
         for item in output.findings:
-            point(item)
+            point(item, 'findings[].fact_ids')
         _reasoning_text(output.prosecution_assessment, evidence)
         _reasoning_text(output.defense_assessment, evidence)
     _reasoning_text(output.uncertainty, evidence)

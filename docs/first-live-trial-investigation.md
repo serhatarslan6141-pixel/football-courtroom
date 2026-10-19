@@ -1,5 +1,142 @@
 # First controlled live trial: failure investigation
 
+Latest: the second Evidence diagnostic hit its 768-token output ceiling. The
+subsequent **offline-only architecture review** replaces model reconstruction
+with fact selection and deterministic Python assembly, reduces context, and
+normalizes outbound schemas for all agents. See [the review and size
+measurements](agent-pipeline-review.md). No new paid diagnostic is prepared;
+all existing failed/consumed records remain blocked.
+
+A fresh, fixed Evidence-only schema diagnostic is now **prepared, not executed**
+for the untried home missed chance in `synthetic-202` at 75:55. See
+[the new diagnostic guide](evidence-schema-diagnostic.md) for the exact future
+command, allocation, safeguards and 395-test backend verification. Existing
+consumed diagnostic and failed-trial records remain unchanged. Execution still
+requires separate explicit approval.
+
+## Outbound Evidence schema compatibility correction (offline only)
+
+Mock request interception confirmed that the case-specific fact-ID enums survive
+Microsoft Agent Framework and SDK serialization. It also found `minLength`,
+`maxLength`, `minItems` and `maxItems` on the wire. Microsoft lists these as
+unsupported in Azure's structured-output subset. Earlier HTTP 200 responses do
+not establish universal support for those keywords.
+
+`evidence_wire_response_schema` now wraps the bounded Evidence response model
+and normalizes only its `model_json_schema` serialization. A deep-copy transform
+removes Azure's documented unsupported type-specific keywords from schema nodes,
+including nested definitions/items. It does not edit property names or enum
+values that happen to resemble keywords. The canonical local models are not
+mutated, and the wrapper inherits their original Pydantic validation rules.
+
+This applies only to Evidence in the full workflow and the isolated diagnostic;
+the other agents' outbound schemas are outside this focused correction. It
+retains both case-specific fact-ID enums, `strict: true`, all required fields,
+types, `$defs`/`$ref`, and `additionalProperties: false`. Independent grounding,
+cutoff, exact observation values, 768-token output limit and all cost/cache
+protections remain unchanged. This correction alone is not a compatibility
+sign-off for a complete four-agent trial.
+
+Tests inspect the actual JSON under `text.format.schema` at MockTransport,
+after framework/SDK serialization, rather than only checking a model-generated
+schema. The Evidence request contains only the documented supported schema
+keywords, has nine object properties and stays within the nesting limit.
+Tests also cover nonmutation/idempotence, data values resembling keywords,
+both enum fields, cross-case isolation, unknown-reference rejection and
+twelve minimum/maximum string/array violations. Locally invalid responses still
+fail at structured-output parsing before any handoff, despite the omitted
+provider-side length/size keywords. The fixed diagnostic CLI is exercised only
+with temporary records and a mocked transport; its existing production block
+is never bypassed.
+
+Validation passed **17 focused tests** and the **full 378-test backend suite**.
+Only the existing Starlette/AnyIO deprecation warning was reported. Hash checks
+confirmed `.env`, ledger, logs, caches and all preserved records unchanged;
+today's usage remains six and no backend is listening on port 8000.
+No live Azure request is needed to
+verify serialization or local rejection. A new Evidence-only diagnostic still
+requires its own prepared one-attempt identity and separate explicit approval;
+the existing completed diagnostic cannot be reused or unblocked.
+
+Reference: [Azure structured-output JSON Schema support and limitations](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs#json-schema-support-and-limitations).
+
+## Latest follow-up: fact-reference reliability (offline only)
+
+The separately approved `synthetic-202-missed_opportunity-away-1910` trial later
+failed at Evidence grounding validation: HTTP 200, response `completed`,
+15,298 input / 256 output tokens, `unknown_fact_reference`, one attempt and no
+handoff. It was not truncated. The original `synthetic-101` failure remains a
+separate incident with insufficient original metadata. Neither failed record
+was reset or rewritten. The shared ledger remains at six for 2026-10-19.
+
+The newest failure's exact rejected string and field were not retained. An ID
+copying mistake or event/fact namespace confusion is plausible, not established.
+The confirmed design weakness is that the previous provider schema allowed any
+string in both fact-reference fields, leaving all membership checks until after
+generation. Existing prompt instructions already required exact catalog IDs.
+
+Targeted changes:
+
+- Evidence's provider response schema now lists the current case's exact
+  authorized fact IDs as JSON Schema enums in `observations[].fact_id` and
+  `interpretation.fact_ids` items. Per-case schema creation does not mutate the
+  shared models or another case's choices. Other agents' schemas are unchanged.
+- The prompt explicitly distinguishes complete fact IDs from event IDs and
+  labels, including the required catalog prefix on trigger facts.
+- The runtime grounding validator remains authoritative. Invalid references
+  are never repaired, substituted or mapped to a closest match. Even a mocked
+  provider that violates its advertised enum still fails closed. The existing
+  public schema, exact value checks, event/fact support checks, evidence cutoff,
+  numeric-prose restrictions and 768-token budget are retained.
+- Safe diagnostics retain the existing reason `unknown_fact_reference` and add
+  an allowlisted `field`: `observations[].fact_id` versus
+  `interpretation.fact_ids` (also argument/finding fields for other agents).
+  `reference_kind` is only `event_id` when every unknown fact selection is a
+  known event ID, otherwise `unknown`. No rejected IDs, raw prose, headers,
+  prompts or sensitive configuration are recorded. Old records stay unchanged.
+
+Context review: the selected case includes 81 events and 33 facts. The fact
+catalog repeats five distinct supporting-event lists across those 33 facts:
+16,858 serialized bytes versus 2,130 bytes for distinct lists. Events include
+386 null fields. This redundancy may increase copying difficulty, but the
+failure record cannot establish that it caused the rejection. No evidence is
+removed or compacted in this fix. Local response-schema size rises from 1,268
+to 3,167 bytes for authorized choices; no larger evidence catalog is added.
+
+A selection-only Evidence contract could let the model select authorized fact
+IDs and have the backend construct exact observations and bounded supporting
+citations from the verified catalog. That avoids asking the model to reproduce
+values and event IDs. It would require an explicit internal schema/adapter and
+careful citation-bound tests. It is not implemented here: enum-constrained
+selection within the existing contract is the smaller correction. Unknown IDs
+must be rejected before any deterministic lookup in either design.
+
+The cache configuration identity is intentionally retained: accepted grounded
+content and public output shape are unchanged; generation choices are narrowed
+to what validation already required. Existing completed caches are revalidated,
+and both failed-case blocks remain effective. No ledger, daily/per-trial limits,
+send hooks, timeout, retries, duplicate guards or live gates are changed.
+
+Exact-case mocked regressions cover both bad-reference fields, mistyped IDs,
+event IDs used as fact IDs, an actual other case's trigger fact, metadata
+allowlisting, correct wire enums, case isolation, full validated handoffs,
+blocked repeat generation and a terminal Evidence-only framework execution.
+They use fake credentials, forbidden real sockets and temporary runtime files.
+
+Validation for this correction: **364 backend tests passed**, **128 frontend
+tests passed**, and **20 focused exact-case/reference-diagnostic tests passed**
+after the final edits. Only the existing Starlette/AnyIO deprecation warning
+was reported by backend pytest. Hash checks confirm `.env`, the ledger, both
+failed-case records and all pre-existing runtime files remain unchanged. No
+backend is listening on port 8000. No frontend source was modified.
+
+Safest next verification is offline Evidence-only and full-workflow tests.
+A future paid check should be a separately prepared, explicitly approved,
+one-attempt Evidence-only diagnostic with a fresh diagnostic identity and the
+same validation path. The existing diagnostic CLI is fixed to the already
+completed `synthetic-101` diagnostic and must not be rerun/unblocked or presented
+as a new `synthetic-202` harness. No live verification was performed for this fix.
+
 Investigated on 2026-10-19. The controlled backend was stopped safely; its log
 records a completed shutdown. No retry, Azure inference, `.env` edit, ledger
 reset, cache deletion, deployment or live restart was performed during this

@@ -9,14 +9,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 import logging
 import os
 import sys
+from functools import partial
 
-from .courtroom import CacheBusy, TrialCache, TrialConfig, TrialState
+from .courtroom import CacheBusy, TrialCache, TrialConfig, TrialState, trial_cache_key
 from .courtroom_evidence import build_evidence, digest
 from .foundry import DailyRequestBudget, FoundrySettings, FoundryUnavailable, ROOT
 from .synthetic_match import get_match
@@ -28,10 +29,31 @@ DIAGNOSTIC_ID = 'first-evidence-only-v1'
 EXPECTED_INPUT_DIGEST = '731856a6c450ae9bf52e6a9867e51b7cf955dcb46160382d2d41ba43131ca409'
 
 
-def _summary(status, state=None, **extra):
+@dataclass(frozen=True)
+class DiagnosticAllocation:
+    diagnostic_id: str
+    match_id: str
+    case_id: str
+    cutoff: int
+    input_digest: str
+    require_untried_case: bool = False
+
+
+SCHEMA_DIAGNOSTIC = DiagnosticAllocation(
+    'evidence-schema-compatibility-v1', 'synthetic-202',
+    'synthetic-202-missed_opportunity-home-4555', 4645,
+    '91469d18f2cb1eeaf02fb7928316d9c1c64b537c186d7648f940721356294e11', True)
+
+
+def _original_allocation():
+    return DiagnosticAllocation(DIAGNOSTIC_ID, MATCH_ID, CASE_ID, CUTOFF, EXPECTED_INPUT_DIGEST)
+
+
+def _summary(status, state=None, *, allocation=None, **extra):
+    allocation = allocation or _original_allocation()
     return {
-        'diagnostic': DIAGNOSTIC_ID, 'match_id': MATCH_ID, 'case_id': CASE_ID,
-        'evidence_cutoff': CUTOFF, 'status': status, 'max_api_attempts': 1,
+        'diagnostic': allocation.diagnostic_id, 'match_id': allocation.match_id, 'case_id': allocation.case_id,
+        'evidence_cutoff': allocation.cutoff, 'status': status, 'max_api_attempts': 1,
         'api_attempts': state.api_attempts if state else 0,
         'http_status': state.http_status if state else None,
         'error_category': state.error_category if state else None,
@@ -54,58 +76,74 @@ def _usage_today(path):
         raise FoundryUnavailable('Usage ledger unavailable; diagnostic blocked.') from None
 
 
-async def run_diagnostic(settings, config, *, allow_live=False, cache=None, budget=None, transport=None):
+async def run_diagnostic(settings, config, *, allow_live=False, cache=None, budget=None, transport=None,
+                         allocation=None, trial_cache=None):
     """Explicit permission plus a one-node framework workflow, never a trial.
 
     Tests inject MockTransport and temporary records. The diagnostic identity
     stays fixed across prompt/config changes, so rerunning cannot buy a retry.
-    The original .logs/courtroom namespace is never read, rewritten or cleared.
+    The original .logs/courtroom namespace is never rewritten or cleared.
+    Fresh allocations also inspect its existing case record before any send.
     """
+    allocation = allocation or _original_allocation()
+    summary = partial(_summary, allocation=allocation)
     if (not allow_live or os.environ.get('EVIDENCE_DIAGNOSTIC_LIVE_ENABLED', '').lower() != 'true'
             or os.environ.get('COURTROOM_LIVE_ENABLED', '').lower() == 'true'):
-        return _summary('disabled')
+        return summary('disabled')
     if settings.deployment != 'gpt-4.1-mini' or not 1 <= settings.timeout <= 120:
-        return _summary('configuration_unavailable')
+        return summary('configuration_unavailable')
+    if allocation.require_untried_case and config.output_tokens_for('evidence') != 768:
+        return summary('configuration_unavailable')
     try:
         from .courtroom_workflow import execute_evidence_diagnostic, failure_category
     except (ImportError, SyntaxError):
-        return _summary('framework_unavailable')
-    evidence = build_evidence(get_match(MATCH_ID), CASE_ID, CUTOFF)
+        return summary('framework_unavailable')
+    evidence = build_evidence(get_match(allocation.match_id), allocation.case_id, allocation.cutoff)
     state = TrialState(evidence)
-    key = digest({'diagnostic': DIAGNOSTIC_ID, 'evidence': evidence.model_dump()})
+    key = digest({'diagnostic': allocation.diagnostic_id, 'evidence': evidence.model_dump()})
     fingerprint = digest({'evidence': evidence.model_dump(), 'prior_submissions': {}})
-    if fingerprint != EXPECTED_INPUT_DIGEST:
-        return _summary('evidence_changed')
+    if fingerprint != allocation.input_digest:
+        return summary('evidence_changed')
     cache = cache if cache is not None else TrialCache(ROOT / '.logs' / 'evidence-diagnostics')
     budget = budget if budget is not None else DailyRequestBudget()
+    # Inspect the original four-call configuration identity before clamping it.
+    if allocation.require_untried_case:
+        try:
+            cases = trial_cache if trial_cache is not None else TrialCache()
+            if cases.read(trial_cache_key(evidence, settings, config)) is not None:
+                return summary('blocked_existing_trial')
+        except (OSError, ValueError, TypeError):
+            return summary('record_or_budget_unavailable')
     # Independent of env overrides and full-trial settings, never exceed one.
     config = replace(config, max_calls=min(1, config.max_calls))
     settings = replace(settings, retries=0)
     try:
         with cache.claim(key):
             if cache.read(key) is not None:
-                return _summary('blocked_previous_diagnostic')
+                return summary('blocked_previous_diagnostic')
             today, used = _usage_today(budget.path)
+            if allocation.require_untried_case and used >= settings.daily_cap:
+                return summary('daily_budget_exhausted', utc_day=today, usage_before=used)
             settings = replace(settings, daily_cap=min(settings.daily_cap, used + 1))
             metadata = {'input_digest': fingerprint, 'evidence_digest': digest(evidence.model_dump()),
                         'utc_day': today, 'usage_before': used, 'effective_daily_cap': settings.daily_cap}
             # Never allow a failed/cancelled/crashed attempt to auto-regenerate.
-            cache.write(key, _summary('in_progress', **metadata))
+            cache.write(key, summary('in_progress', **metadata))
             try:
                 await asyncio.wait_for(execute_evidence_diagnostic(
                     state, settings, config, budget, transport), timeout=settings.timeout)
-                report = _summary('completed', state, **metadata)
+                report = summary('completed', state, **metadata)
             except Exception as exc:
                 state.error_category = failure_category(exc, state)
                 state.diagnostics.setdefault('reason', state.error_category)
-                report = _summary('failed', state, **metadata)
+                report = summary('failed', state, **metadata)
             # Only metadata/fingerprints: no raw or validated narrative is saved.
             cache.write(key, report)
             return report
     except CacheBusy:
-        return _summary('blocked_concurrent_diagnostic')
+        return summary('blocked_concurrent_diagnostic')
     except (OSError, ValueError, TypeError, KeyError, AttributeError, FoundryUnavailable):
-        return _summary('record_or_budget_unavailable', state)
+        return summary('record_or_budget_unavailable', state)
 
 
 @contextmanager
@@ -139,22 +177,26 @@ def _live_environment():
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Isolated Evidence-only diagnostic; disabled by default.')
     parser.add_argument('--live', action='store_true', help='Authorize at most ONE potentially billable Evidence request.')
+    parser.add_argument('--schema-check', action='store_true', help='Select the fixed fresh schema-compatibility allocation.')
     args = parser.parse_args(argv)
+    allocation = SCHEMA_DIAGNOSTIC if args.schema_check else _original_allocation()
+    summary = partial(_summary, allocation=allocation)
     if not args.live:
-        print(json.dumps(_summary('disabled')))
+        print(json.dumps(summary('disabled')))
         return 0
     previous_logging = logging.root.manager.disable
     logging.disable(sys.maxsize)
     try:
         with _live_environment():
             settings = FoundrySettings.from_env()
-            report = asyncio.run(run_diagnostic(settings, TrialConfig.from_env(), allow_live=True))
+            report = asyncio.run(run_diagnostic(settings, TrialConfig.from_env(), allow_live=True,
+                                                allocation=allocation))
     except KeyboardInterrupt:
         # A tombstone, if created, remains blocked. Do not claim zero usage.
-        report = _summary('interrupted', api_attempts=None)
+        report = summary('interrupted', api_attempts=None)
     except Exception:
         # Exception strings can contain credentials, URLs or provider content.
-        report = _summary('configuration_or_execution_unavailable', api_attempts=None)
+        report = summary('configuration_or_execution_unavailable', api_attempts=None)
     finally:
         logging.disable(previous_logging)
     print(json.dumps(report))
