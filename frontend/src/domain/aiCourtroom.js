@@ -1,7 +1,7 @@
 import { caseAvailableAt, createTrialPresentation, evidenceBounds } from './courtroom.js'
 
 export const AGENT_ROLES = [
-  { id: 'evidence', name: 'Evidence', task: 'Build the verified file' },
+  { id: 'evidence', name: 'Evidence', task: 'Prioritize verified facts' },
   { id: 'prosecution', name: 'Prosecution', task: 'Make the strongest case' },
   { id: 'defense', name: 'Defense', task: 'Challenge the assumptions' },
   { id: 'judge', name: 'Judge', task: 'Weigh both sides' },

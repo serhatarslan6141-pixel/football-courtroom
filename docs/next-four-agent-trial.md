@@ -1,5 +1,10 @@
 # Next controlled four-agent trial: preparation only
 
+**Historical plan: its synthetic-202 case failed and remains blocked.** Do not
+reuse these startup steps for that case. The fresh plan for the simplified
+architecture is [simplified-four-agent-trial.md](simplified-four-agent-trial.md),
+which is preparation only and requires new explicit approval before enabling.
+
 Prepared on 2026-10-19 after the separately approved Evidence-only diagnostic
 succeeded (HTTP 200, validated output, 11,769 input / 239 output tokens).
 This preparation makes no model request, starts no server, and leaves live mode

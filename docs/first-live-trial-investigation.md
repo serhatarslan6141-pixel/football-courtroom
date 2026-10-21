@@ -1,5 +1,12 @@
 # First controlled live trial: failure investigation
 
+Latest follow-up: the simplified synthetic-303 trial validated Evidence, then
+Prosecution failed with `event_not_supported_by_fact` after HTTP 200 and a
+completed 118-token response. Both servers are stopped. The [Prosecution
+investigation](prosecution-failure-investigation.md) records the confirmed cause
+and the offline-only extension of deterministic citations to opposing arguments
+and Judge findings. No further Azure requests or failed-case unblocks occurred.
+
 Latest: the second Evidence diagnostic hit its 768-token output ceiling. The
 subsequent **offline-only architecture review** replaces model reconstruction
 with fact selection and deterministic Python assembly, reduces context, and

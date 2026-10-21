@@ -101,6 +101,20 @@ class Ruling(StrictModel):
     counterfactual_outcome: Literal['unknown']
 
 
+class FactSelectedPoint(StrictModel):
+    """Private reasoning contract: Python derives supporting event citations."""
+    interpretation: str = Field(min_length=8, max_length=600)
+    fact_ids: list[str] = Field(min_length=1, max_length=8)
+
+
+class ArgumentSelection(Argument):
+    points: list[FactSelectedPoint] = Field(min_length=1, max_length=3)
+
+
+class RulingSelection(Ruling):
+    findings: list[FactSelectedPoint] = Field(min_length=1, max_length=3)
+
+
 class AgentTrace(StrictModel):
     agent: Literal['evidence', 'prosecution', 'defense', 'judge']
     status: Literal['completed', 'failed']

@@ -1,5 +1,17 @@
 # Offline agent pipeline reliability review
 
+Latest: [complete offline stabilization](pipeline-stabilization.md) reviews all
+four agents together, adds shared prompt/schema and diagnostic fixes, and
+verifies real-framework FastAPI responses through the cinematic React flow.
+
+Follow-up: the subsequent simplified trial passed Evidence but exposed the
+same reference-copying risk in Prosecution. [The Prosecution investigation](prosecution-failure-investigation.md)
+documents the offline extension of deterministic citations to Prosecution,
+Defense and Judge: private points/findings now select authorized fact IDs,
+while Python constructs event references and retains full public validation.
+The measurements below describe the earlier Evidence/context revision, not
+the newly amended prompts/schemas. No new live attempt or allocation followed.
+
 2026-10-19. No Azure/resource/pricing requests, live server, new diagnostic
 allocation, ledger reset, failed-case unblock, deployment or `.env` change.
 

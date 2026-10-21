@@ -20,6 +20,7 @@ CASES = [
     ('synthetic-101', 'synthetic-101-missed_opportunity-away-3218', 3308),
     ('synthetic-202', 'synthetic-202-missed_opportunity-away-1910', 2000),
     ('synthetic-202', 'synthetic-202-missed_opportunity-home-4555', 4645),
+    ('synthetic-303', 'synthetic-303-missed_opportunity-home-2412', 2502),
     ('synthetic-303', 'synthetic-303-substitution_impact-away-4187', 4397),
 ]
 
@@ -31,11 +32,15 @@ def test_full_four_agent_pipeline_has_compact_context_and_azure_schemas(
     evidence = build_evidence(match, case_id, cutoff)
     before = evidence.model_dump_json()
     wire = MockWire(evidence)
+    selected = [next(f for f in evidence.facts if f.fact_id.startswith('trigger:')),
+                *[f for f in evidence.facts if f.value.isdigit() and f.event_ids][:2]]
+    wire.outputs['evidence']['fact_ids'] = [f.fact_id for f in selected]
     service = courtroom.TrialService(courtroom.TrialCache(tmp_path / 'cache'),
         courtroom.DailyRequestBudget(tmp_path / 'usage'), httpx.MockTransport(wire.handle))
     result = asyncio.run(service.analyze(match, case_id, cutoff, allow_live=True))
     assert result.source == 'live_ai'
     assert result.api_attempts == 4
+    assert len(result.evidence_agent.observations) == 3
     assert [entry.handoff_to for entry in result.trace] == ['prosecution', 'defense', 'judge', None]
     expected_facts = [fact.fact_id for fact in evidence.facts]
     original_size = len(json.dumps({'evidence': evidence.model_dump(), 'prior_submissions': {}}, separators=(',', ':')))
@@ -65,6 +70,30 @@ def test_full_four_agent_pipeline_has_compact_context_and_azure_schemas(
     assert cached.model_dump(exclude={'source', 'api_attempts', 'disclosure'}) == result.model_dump(
         exclude={'source', 'api_attempts', 'disclosure'})
     assert len(wire.calls) == 4 and service.budget.path.read_bytes() == ledger
+
+
+def test_selected_simplified_trial_cap_and_eligibility(enabled, tmp_path, monkeypatch):
+    monkeypatch.setenv('FOUNDRY_DAILY_REQUEST_CAP', '4')
+    match = get_match('synthetic-303')
+    case_id = 'synthetic-303-missed_opportunity-home-2412'
+    with pytest.raises(KeyError):
+        build_evidence(match, case_id, 2501)
+    evidence = build_evidence(match, case_id, 2502)
+    assert (evidence.evidence_start, evidence.evidence_cutoff) == (2322, 2502)
+    assert build_evidence(match, case_id, 5400) == evidence
+    wire = MockWire(evidence)
+    service = courtroom.TrialService(courtroom.TrialCache(tmp_path / 'cache'),
+        courtroom.DailyRequestBudget(tmp_path / 'usage'), httpx.MockTransport(wire.handle))
+    assert asyncio.run(service.prepare(match, case_id, 2502)) is None
+    assert not wire.calls and not service.budget.path.exists()
+    result = asyncio.run(service.analyze(match, case_id, 2502, allow_live=True))
+    assert result.source == 'live_ai' and result.api_attempts == 4
+    assert json.loads(service.budget.path.read_text())['count'] == 4
+    with pytest.raises(courtroom.FoundryUnavailable):
+        service.budget.reserve(4)
+    cached = asyncio.run(service.prepare(match, case_id, 2502))
+    assert cached.source == 'cached_ai' and cached.api_attempts == 0
+    assert len(wire.calls) == 4
 
 
 def test_all_builtin_cases_preserve_catalog_and_lossless_downstream_evidence():

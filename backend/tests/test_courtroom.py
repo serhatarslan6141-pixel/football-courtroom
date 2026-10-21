@@ -80,6 +80,10 @@ class MockWire:
         original = self.outputs['evidence']
         self.outputs['evidence'] = {'fact_ids': original['interpretation']['fact_ids'],
             'explanation': original['interpretation']['interpretation'], 'uncertainty': original['uncertainty']}
+        for role in ('prosecution', 'defense', 'judge'):
+            key = 'findings' if role == 'judge' else 'points'
+            self.outputs[role][key] = [{k: v for k, v in point.items() if k != 'event_ids'}
+                                      for point in self.outputs[role][key]]
         self.fail_role = None
         self.fail_status = None
         self.on_call = None

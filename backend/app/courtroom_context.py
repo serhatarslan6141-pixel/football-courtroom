@@ -1,5 +1,6 @@
-"""Role-scoped model context and deterministic, validated Evidence assembly."""
-from .courtroom_models import EvidenceSelection, EvidenceSubmission
+"""Role-scoped context and deterministic citations for validated submissions."""
+from .courtroom_models import (Argument, ArgumentSelection, EvidenceSelection,
+                              EvidenceSubmission, Ruling, RulingSelection)
 from .courtroom_evidence import InvalidAgentOutput, validate_submission
 
 
@@ -39,28 +40,37 @@ def agent_payload(role, evidence, prior_submissions):
             else compact_evidence_context(evidence), 'prior_submissions': prior_submissions}
 
 
-def assemble_evidence(selection, evidence):
-    """Exact lookup, not repair: unknown IDs are rejected before construction."""
-    selection = EvidenceSelection.model_validate(selection)
+def _selected_facts(fact_ids, evidence, field):
+    """Exact lookup only; never repair or substitute a model reference."""
     facts = {fact.fact_id: fact for fact in evidence.facts}
-    unknown = set(selection.fact_ids) - facts.keys()
+    unknown = set(fact_ids) - facts.keys()
     if unknown:
         event_ids = {event.event_id for event in evidence.events}
-        raise InvalidAgentOutput('unknown_fact_reference', field='selection.fact_ids',
+        raise InvalidAgentOutput('unknown_fact_reference', field=field,
             reference_kind='event_id' if unknown <= event_ids else 'unknown')
-    if len(set(selection.fact_ids)) != len(selection.fact_ids):
-        raise InvalidAgentOutput('duplicate_fact_reference', field='selection.fact_ids')
-    selected = [facts[fact_id] for fact_id in selection.fact_ids]
+    if len(set(fact_ids)) != len(fact_ids):
+        raise InvalidAgentOutput('duplicate_fact_reference', field=field)
+    return [facts[fact_id] for fact_id in fact_ids]
+
+
+def _support_citations(selected, evidence, field):
     # First reference from each selected nonempty fact, then remaining support
     # in catalog order. This is an explicit bounded citation sample, not a new
     # fact or a claim that these are all supporting events.
     support = list(dict.fromkeys([*(fact.event_ids[0] for fact in selected if fact.event_ids),
                                   *(event_id for fact in selected for event_id in fact.event_ids)]))
     if not support:
-        raise InvalidAgentOutput('missing_fact_support', field='selection.fact_ids')
+        raise InvalidAgentOutput('missing_fact_support', field=field)
     if not set(support) <= {event.event_id for event in evidence.events}:
         raise InvalidAgentOutput('unknown_event_reference')
-    citations = support[:12]
+    return support[:12]
+
+
+def assemble_evidence(selection, evidence):
+    """Construct public records only after validating the private selection."""
+    selection = EvidenceSelection.model_validate(selection)
+    selected = _selected_facts(selection.fact_ids, evidence, 'selection.fact_ids')
+    citations = _support_citations(selected, evidence, 'selection.fact_ids')
     result = EvidenceSubmission(
         observations=[{'fact_id': fact.fact_id, 'value': fact.value} for fact in selected],
         event_ids=list(dict.fromkeys([*evidence.trigger_event_ids, *citations])),
@@ -68,4 +78,26 @@ def assemble_evidence(selection, evidence):
                         'interpretation': selection.explanation},
         uncertainty=selection.uncertainty)
     validate_submission('evidence', result, evidence)
+    return result
+
+
+def assemble_reasoning(role, selection, evidence):
+    """Keep model reasoning; construct fact-supported citations deterministically.
+
+    The private schema forbids event_ids. Supplying an unsupported event is a
+    schema error, never an instruction to silently replace it with a valid one.
+    """
+    if role not in ('prosecution', 'defense', 'judge'):
+        raise InvalidAgentOutput('wrong_submission_type')
+    private = RulingSelection if role == 'judge' else ArgumentSelection
+    selection = private.model_validate(selection)
+    key = 'findings' if role == 'judge' else 'points'
+    points = []
+    for point in getattr(selection, key):
+        field = f'{key}[].fact_ids'
+        selected = _selected_facts(point.fact_ids, evidence, field)
+        points.append({**point.model_dump(), 'event_ids': _support_citations(selected, evidence, field)})
+    public = Ruling if role == 'judge' else Argument
+    result = public.model_validate({**selection.model_dump(), key: points})
+    validate_submission(role, result, evidence)
     return result

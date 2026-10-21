@@ -58,6 +58,7 @@ class TrialState:
     error_category: Optional[str] = None
     http_status: Optional[int] = None
     diagnostics: dict = field(default_factory=dict)
+    agent_diagnostics: dict = field(default_factory=dict)
 
 
 class CacheBusy(Exception):
@@ -197,7 +198,8 @@ class TrialService:
                         error_category=None, http_status=state.http_status, cache_key=key,
                         configuration_version=CONFIGURATION_VERSION,
                     )
-                    self.cache.write(key, {'status': 'completed', 'result': result.model_dump()})
+                    self.cache.write(key, {'status': 'completed', 'result': result.model_dump(),
+                                           'agent_diagnostics': state.agent_diagnostics})
                     return result
                 except Exception:
                     # Workflow executors sanitize their own errors. Unexpected
@@ -207,7 +209,8 @@ class TrialService:
                                            'api_attempts': state.api_attempts,
                                            'http_status': state.http_status,
                                            'trace': [entry.model_dump() for entry in state.trace],
-                                           'diagnostics': state.diagnostics})
+                                           'diagnostics': state.diagnostics,
+                                           'agent_diagnostics': state.agent_diagnostics})
                     return fallback(evidence, reason, state, key)
         except CacheBusy:
             return fallback(evidence, 'trial_in_progress', key=key)
