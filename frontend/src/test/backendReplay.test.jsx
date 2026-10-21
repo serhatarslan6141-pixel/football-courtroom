@@ -13,10 +13,14 @@ import {
 } from '../session/sessionReducer.js'
 
 const root = `${resolve(process.cwd(), '..')}/`
-const venv = `${root}.venv/bin/python`
+// Match the documented setup; a clean clone has no legacy .venv/bin/python.
+const python = [
+  `${root}.venv/phase4b/bin/python`,
+  `${root}.venv/bin/python`,
+].find((path) => existsSync(path)) || 'python3'
 const fixture = JSON.parse(
   execFileSync(
-    existsSync(venv) ? venv : 'python3',
+    python,
     [`${root}backend/tests/export_replay.py`],
     {
       env: { ...process.env, PYTHONPATH: `${root}backend` },

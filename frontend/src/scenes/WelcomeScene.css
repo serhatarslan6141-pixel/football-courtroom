@@ -1,8 +1,8 @@
 .welcome-shell { flex: 1; display: flex; flex-direction: column; }
 .welcome-composition {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: clamp(32px, 6vw, 100px);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: clamp(20px, 3vw, 48px);
   align-items: center;
   flex: 1;
   padding-block: clamp(36px, 7vh, 84px);
@@ -17,8 +17,8 @@
 .welcome-copy h1 > span { display: block; white-space: nowrap; }
 .welcome-copy h1 em { font-weight: 400; color: var(--gold); }
 .welcome-description { color: var(--muted); font-size: clamp(16px, 1.4vw, 20px); line-height: 1.7; max-width: 36ch; margin: 0 0 34px; }
-.welcome-exhibit { width: 100%; max-width: 480px; justify-self: end; transform: rotate(3deg); }
-.welcome-exhibit svg { display: block; width: 100%; max-height: min(63vh, 570px); height: auto; box-shadow: 16px 18px 0 #d1b47c0a; }
+.welcome-exhibit { width: 100%; max-width: 600px; justify-self: end; transform: none; }
+.welcome-exhibit svg { display: block; width: 100%; max-height: min(68vh, 640px); height: auto; filter: drop-shadow(0 22px 14px #0004); }
 @media (min-width: 1500px) { .welcome-composition { padding-block: 70px; } }
 @media (max-width: 1050px) {
   .welcome-composition { gap: 30px; grid-template-columns: minmax(0, 1.4fr) minmax(0, .85fr); }
@@ -30,7 +30,7 @@
   .welcome-copy h1 { font-size: clamp(39px, 9vw, 64px); margin-bottom: 24px; }
   .welcome-description { font-size: 16px; margin-bottom: 26px; }
   .welcome-exhibit { width: min(100%, 360px); justify-self: center; transform: none; }
-  .welcome-exhibit svg { max-height: 275px; box-shadow: none; }
+  .welcome-exhibit svg { max-height: 300px; filter: none; }
 }
 @media (max-height: 760px) and (min-width: 701px) {
   .welcome-composition { padding-block: 28px; }

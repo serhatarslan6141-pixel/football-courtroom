@@ -32,6 +32,7 @@ def export():
         AZURE_OPENAI_API_KEY='fake-offline-key', AZURE_OPENAI_DEPLOYMENT='gpt-4.1-mini')
     with patch.dict(os.environ, environment, clear=True), patch.object(socket.socket, 'connect', forbidden), TemporaryDirectory() as directory:
         root = Path(directory)
+        os.environ['COURTROOM_TRIAL_LIBRARY_DIR'] = str(root / 'library')
         match = get_match('synthetic-303')
         evidence = build_evidence(match, 'synthetic-303-missed_opportunity-home-2412', 2502)
         wire = MockWire(evidence)
@@ -51,7 +52,15 @@ def export():
             assert live['source'] == 'live_ai' and live['api_attempts'] == 4
             assert len(live['evidence_agent']['observations']) == 3
             assert all(entry['status'] == 'completed' for entry in live['trace'])
-            cached = client.post(path + '/prepare', json={'through_timestamp': 2502}).json()['result']
+            # Rehearse the deployed read-only library, with no Azure credentials
+            # and both live switches disabled, through the real API and React.
+            service.library.publish(courtroom.TrialResult.model_validate(live))
+            no_azure = {k: v for k, v in os.environ.items() if not k.startswith('AZURE_OPENAI_')}
+            no_azure.update(FOUNDRY_LIVE_ENABLED='false', COURTROOM_LIVE_ENABLED='false')
+            with patch.dict(os.environ, no_azure, clear=True):
+                public_service = courtroom.TrialService(library=service.library)
+                with patch.object(main, 'trial_service', public_service):
+                    cached = client.post(path + '/prepare', json={'through_timestamp': 2502}).json()['result']
             assert cached['source'] == 'cached_ai' and cached['api_attempts'] == 0 and len(wire.calls) == 4
             fixture = {'match': client.get(f'/api/matches/{match.match_id}').json(),
                 'events': client.get(f'/api/matches/{match.match_id}/events').json()['events'],
@@ -63,7 +72,8 @@ def export():
                     for t in (0, 2502)}}
             wire.outputs['defense']['points'][0]['fact_ids'] = ['unauthorized-offline-reference']
             failed_service = courtroom.TrialService(courtroom.TrialCache(root / 'failed-cache'),
-                courtroom.DailyRequestBudget(root / 'failed-usage'), httpx.MockTransport(wire.handle))
+                courtroom.DailyRequestBudget(root / 'failed-usage'), httpx.MockTransport(wire.handle),
+                library=type(service.library)(root / 'empty-library'))
             with patch.object(main, 'trial_service', failed_service):
                 fixture['fallback'] = client.post(path, json={'through_timestamp': 2502, 'allow_live': True}).json()
                 assert fixture['fallback']['source'] == 'deterministic_fallback'

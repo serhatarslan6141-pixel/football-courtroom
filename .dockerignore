@@ -1,0 +1,22 @@
+# Allowlist: private runtime data and live-generation code never leave the host.
+**
+!Dockerfile
+!backend/
+!backend/requirements-public.txt
+!backend/app/
+!backend/app/__init__.py
+!backend/app/PUBLIC_ONLY
+!backend/app/main.py
+!backend/app/public_mode.py
+!backend/app/public_courtroom.py
+!backend/app/courtroom_models.py
+!backend/app/courtroom_evidence.py
+!backend/app/trial_library.py
+!backend/app/case_detection.py
+!backend/app/synthetic_match.py
+!backend/app/simulation.py
+!backend/app/football_decisions.py
+!backend/app/football_rules.py
+!backend/data/
+!backend/data/courtroom-trials/
+!backend/data/courtroom-trials/*.json

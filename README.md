@@ -1,182 +1,105 @@
 # Football Courtroom
 
-Football Courtroom is a mock, AI-storytelling football experience where match moments are reframed as courtroom cases. Phase 1 established the project foundation, and Phase 2 adds a deterministic synthetic match engine and live replay system that drives future courtroom case generation.
+**Every Moment Has Two Sides.**
 
-## Stack
+I built Football Courtroom because the best football arguments rarely end with a stat or a replay. Was that a wasted chance, a real momentum shift, or just a convincing story after the fact? The idea was to turn those arguments into a courtroom: examine the evidence, hear both sides, make your own decision, then see how an AI judge weighs the same case.
 
-- Frontend: React with Vite
-- Backend: Python with FastAPI
-- Local development: Node.js + Python virtual environment
-- Synthetic data: Seeded, deterministic event generation using Python standard library
+Built for the **Premier League × Microsoft Inside the Game hackathon**. The demo runs locally. All clubs, players and match events are fictional; there is no real match footage or live football data feed.
 
-## Project structure
+## What you can do
 
-- [backend/app/main.py](backend/app/main.py): FastAPI routes and CORS configuration
-- [backend/app/synthetic_match.py](backend/app/synthetic_match.py): fixture models and event-derived statistics
-- [backend/app/simulation.py](backend/app/simulation.py): coherent possession, role, ball and timing simulation
-- [backend/app/football_rules.py](backend/app/football_rules.py): supported boundary, foul, discipline and offside rules
-- [backend/app/football_decisions.py](backend/app/football_decisions.py): tunable shooting geometry and passing-lane decisions
-- [docs/simulation.md](docs/simulation.md): v2 event contract, supported rules and explicit model limitations
-- [frontend/src/App.jsx](frontend/src/App.jsx): scene navigation and session provider
-- [frontend/src/scenes](frontend/src/scenes): welcome, match replay, and courtroom presentation
-- [frontend/src/session](frontend/src/session): shared context, reducer, replay loading, trial progression and session votes
-- [docs/courtroom.md](docs/courtroom.md): interactive trial, evidence boundaries and future response interface
-- [frontend/src/services/apiClient.js](frontend/src/services/apiClient.js): reusable backend client
-- [scripts/start-dev.sh](scripts/start-dev.sh): starts backend and frontend together
-- [scripts/stop-dev.sh](scripts/stop-dev.sh): stops the local services
+- Pick one of three reproducible matches, or generate a fresh synthetic match.
+- Play, pause and seek through an event-based pitch replay, with match statistics and an event timeline.
+- Open cases about missed opportunities, momentum shifts and substitution impact once their evidence window is complete.
+- Follow five courtroom stages: **The Case → Evidence → Both Sides → Your Verdict → The Ruling**.
+- Hear Prosecution and Defense, inspect their citations, and cast your own vote before the judge's ruling is revealed. Your vote stays independent of the AI's decision.
+- Expand **Behind the verdict** to inspect actual agent handoffs and review cited events. Evidence replay stays inside the case window and doesn't move your original match replay position.
 
-## Local setup
+## How the agents work
 
-1. Open a terminal in the project root.
-2. Install Python 3.12+ and create the framework-capable backend environment:
-   ```bash
-   python3.12 -m venv .venv/phase4b
-   source .venv/phase4b/bin/activate
-   python -m pip install --upgrade pip
-   python -m pip install -r backend/requirements-agents.txt
-   ```
-3. Install the frontend dependencies:
-   ```bash
-   cd frontend
-   npm install
-   cd ..
-   ```
-4. Start the app locally:
-   ```bash
-   ./scripts/start-dev.sh
-   ```
-5. Open the frontend in the browser at http://localhost:5173.
-6. Check the backend health endpoint at http://localhost:8000/health.
+The live pipeline uses **Microsoft Agent Framework** to coordinate four agents, backed by an **Azure OpenAI GPT-4.1 mini deployment in Microsoft Foundry**, through the Responses API:
 
-For backend-only development, run `./scripts/start-backend.sh` from the project
-root. Both launchers prefer `.venv/phase4b`, verify Python 3.12+ and the pinned
-framework dependencies, and refuse to silently use a legacy Python 3.9 runtime.
-Use `./scripts/start-dev.sh --check` to verify runtime selection without starting
-either service. Neither launcher loads `.env` or enables inference.
-
-## Match engine usage
-
-The backend includes a deterministic synthetic match generator that can be reused and extended with different seeds:
-
-```python
-from app.synthetic_match import generate_match
-
-match = generate_match(seed=101)
-print(match.match_id)
-print(len(match.events))
-print(match.events[0])
+```text
+Synthetic match events → case window + verified facts
+                           ↓
+           Evidence → Prosecution → Defense → Judge
+                           ↓
+              Validated trial → React courtroom
 ```
 
-This preserves realistic event ordering, score updates, substitutions, and synthetic metadata while remaining fully fictional.
+- **Evidence** selects up to three relevant facts and explains why they matter.
+- **Prosecution** builds the strongest supported argument for the allegation.
+- **Defense** challenges that argument using the same record and its limitations.
+- **Judge** weighs both sides and rules for Prosecution, Defense, or Inconclusive.
 
-## API overview
+Python calculates the exact facts and statistics and constructs citations from authorized references. The agents select existing fact IDs rather than inventing events or copying exact values. Case-specific structured-output schemas and an independent grounding validator check their submissions before anything is handed to the next agent. Unknown references, future evidence and invalid submissions fail closed.
 
-- GET /health
-- GET /api/matches
-- POST /api/matches (create a new server-session match)
-- GET /api/matches/{match_id}
-- GET /api/matches/{match_id}/events
-- GET /api/matches/{match_id}/state?through_event=N
-- GET /api/matches/{match_id}/cases?through_timestamp=SECONDS
-- GET /api/matches/{match_id}/stream?speed=1.0
-- POST /api/matches/{match_id}/cases/{case_id}/courtroom (Phase 4B; deterministic fallback by default)
+The app clearly separates **cached AI analysis** from **deterministic fallback**. One successful, validated four-agent trial is included in `backend/data/courtroom-trials/`. Other cases use recorded analysis when AI is unavailable. Fallback is never presented as a completed AI trial, and live inference never starts from navigation or a rerender.
 
-The SSE endpoint streams events in order with a configurable replay speed and gracefully stops when the client disconnects.
+The interface is **React + Vite**, with SVG replay and courtroom graphics. The backend is **Python + FastAPI**; the match simulator uses the Python standard library. The Microsoft integration uses Agent Framework's OpenAI provider and the official OpenAI Python SDK. See the pinned [agent dependencies](backend/requirements-agents.txt) and [pipeline notes](docs/pipeline-stabilization.md) for implementation details.
 
-### Match variety
+## Run locally — no Azure account or charges needed
 
-The original three fixtures remain reproducible demos with seeds 101, 202 and 303. Use **Create a new match** in the fixture picker for a fresh seeded match using the same football engine, varied club pairings, compatible lineup rotations and supported playing styles. New matches remain available through replays and browser refreshes for the current backend process; restarting the backend clears them. Saved seeds and `generation_mode` support debugging reproduction. See [match generation](docs/match-generation.md) for the API, storage lifetime, validation and scaling limits.
+You'll need **Python 3.12** and **Node.js 22.12+**. From the cloned repository root:
 
-### Replay synchronization
+```sh
+python3.12 -m venv .venv/phase4b
+.venv/phase4b/bin/python -m pip install -r backend/requirements-agents.txt
+npm ci --prefix frontend
 
-The frontend uses one inclusive `through_timestamp` cutoff for statistics, cases, and visible events. Events sharing a timestamp appear together. Statistics and cases are fetched in parallel and committed together; the display holds its last complete snapshot while the next one loads. Playback advances a continuous shared clock, interpolating recorded ball movement at the selected speed. Completed events and case-eligibility boundaries trigger atomic statistics/case refreshes; the clock briefly waits for those responses. SSE remains available but is not used by the frontend.
-
-Both `/state` and `/cases` interpret `through_event=N` as the first N chronologically sorted events, including zero for an empty replay. This corrects the previous case-endpoint behavior that filtered original generation indexes. When both filters are supplied, both apply.
-
-Cases become eligible only when their entire observation window has elapsed: 210 seconds after a substitution, 180 after a momentum trigger, or 90 after a missed shot. `detection_timestamp` identifies the trigger; the new `available_timestamp` identifies eligibility. Case IDs derive from match, type, team, and trigger time, so they do not change when other cases qualify. These IDs differ from the previous order-based format.
-
-Entering the courtroom pauses playback at the committed match timestamp and cancels any pending advance. Returning keeps that timestamp and remains paused until Play is pressed. The session has a separate evidence-review timestamp for future evidence controls; changing it cannot move the main replay. Navigating to welcome also pauses playback.
-
-### API configuration
-
-By default the frontend requests `/api` on its own origin. Vite's development proxy forwards these requests to `http://localhost:8000`, so the usual start script still works. For a separate backend origin, set `VITE_API_BASE_URL` before starting Vite or building, for example:
-
-```bash
-VITE_API_BASE_URL=https://api.example.com npm run build
-```
-
-Production hosting must either forward `/api` to FastAPI or supply that environment variable at build time. A separate backend origin also needs the frontend origin allowed in FastAPI CORS.
-
-### Match broadcast
-
-The Match scene starts with a fixture picker. Club colors and abbreviations come from each fixture's backend metadata. Choose a tile and enter its replay; Change fixture returns to the picker and pauses playback.
-
-The SVG pitch projects recorded 0–100 ball coordinates in fixed stadium space, reversing attacking directions at half time. Passes, carries, shots and clearances interpolate over recorded durations, with recent possession trails and distinct turnover/pressure cues. Restart setup stays at the awarded location during its pause, with compact throw-in/corner/free-kick/goal-kick/penalty labels. Recorded card and offside context appears only after the decision. In-flight results stay hidden until completion. Missing positions are never filled with invented player tracking. See [the simulation notes](docs/simulation.md) for timing, statistics, eligibility and model assumptions.
-
-The timeline supports mouse/touch dragging and native range-keyboard navigation. It can seek anywhere between kickoff and full time, pausing playback. Next/previous skip to distinct event timestamps. All displayed statistics, pitch events, and cases continue to use the last committed snapshot while a seek loads. Old requests are canceled and version-checked. Goals, substitutions, cards, and courtroom markers appear only once observed; case markers use eligibility time rather than trigger time. Rewinding removes future markers and cases.
-
-The secondary rail has Stats, Events, and Cases tabs. History is paginated in groups of 20 with bounded internal scrolling. Case alerts open the existing Courtroom scene, preserving the replay return position. Reduced-motion preferences disable goal and alert animations.
-
-### Interactive courtroom
-
-Opening an eligible case enters one cinematic five-stage courtroom. **Begin trial** prepares its content: with live AI disabled it automatically uses labeled deterministic fallback; with a validated cached AI result it reuses that analysis without new model calls. An uncached live-enabled case requires a separate charge confirmation before its four agents run. Their verified findings, opposing submissions and sealed ruling populate the existing evidence stage, podium panels and judge. The user's vote remains independent. **Behind the verdict** contains actual handoffs, evidence references and execution status. Citations seek only the bounded evidence replay and preserve the original match cursor. No generation runs on navigation or rerenders. See [Phase 4C](docs/phase4c.md) for the flow, safe testing and limitations.
-
-Votes remain in the current session, scoped to the fixture and case. Evidence playback is separate from the match cursor, and returning restores the exact paused match position. See [the courtroom notes](docs/courtroom.md) for component structure, evidence safeguards and the future Microsoft Foundry response interface.
-
-## Start and stop commands
-
-- Start both services:
-  ```bash
+FOOTBALL_PUBLIC_MODE=true FOUNDRY_LIVE_ENABLED=false COURTROOM_LIVE_ENABLED=false \
   ./scripts/start-dev.sh
-  ```
-- Stop both services:
-  ```bash
-  ./scripts/stop-dev.sh
-  ```
-
-## Testing
-
-Run backend tests from the project root:
-
-```bash
-PYTHONPATH=backend .venv/phase4b/bin/python -m pytest -q backend/tests
 ```
 
-Run the frontend validation commands:
+Open **http://localhost:5173**. Backend health is at **http://localhost:8000/health**. This mode serves the bundled AI result and deterministic fallback, with server-side live generation disabled. It needs no `.env` file or Azure credentials. Stop both services with:
 
-```bash
-cd frontend
-npm test
-npm run lint
-npm run build
+```sh
+./scripts/stop-dev.sh
 ```
 
-## Notes
+To check interpreter selection without starting anything, run `./scripts/start-dev.sh --check`.
 
-- All match data is synthetic and intentionally fictional.
-- The generator produces consistent events from a seed, making it easy to reproduce scenarios and debug replay logic.
-- The architecture remains modular so future phases can add agent logic, richer event interpretation, and courtroom verdict generation without a rewrite.
+**Try the cached AI demo:** choose **Northbridge City vs Harbor Athletic** (`synthetic-303`), seek to **19:32**, open the missed-opportunity case and click **Begin trial**. You'll see the existing validated AI analysis, including all four agent handoffs, without another model request. The other matches still provide the complete courtroom experience through labeled fallback.
 
-## Microsoft Foundry — Phase 4A
+Newly generated matches live in the backend process and disappear when it restarts. Votes and replay positions belong to the current browser session.
 
-Optional backend connectivity is available through a controlled CLI probe;
-normal startup and the courtroom remain deterministic and need no credentials.
-See [Foundry setup and one-request test](docs/foundry.md) and [.env.example](.env.example)
-for backend-only credentials, disabled-by-default live calls, local daily attempt
-limits and the future Microsoft Agent Framework boundary. No orchestration is
-implemented in this phase.
+## Optional: run live AI locally
 
-## Microsoft Agent Framework — Phase 4B backend
+Live generation is optional and can incur Azure charges. It requires your own compatible GPT-4.1 mini deployment and backend-only credentials. After stopping the default servers:
 
-The optional backend now implements four real agents in a sequential framework
-workflow: Evidence → Prosecution → Defense → Judge. It validates citations and
-observations against a fixed synthetic evidence window, retains deterministic
-fallback, and protects each model request with the existing daily budget.
-Successful trials are cached; concurrent or failed trials are not automatically
-regenerated. The frontend still uses recorded-evidence assessments.
+```sh
+cp -n .env.example .env
+```
 
-See [Phase 4B architecture, API, offline tests and controlled opt-in](docs/phase4b.md).
-The agent dependencies require Python 3.10+; the full implementation was tested
-in a separate Python 3.12 environment. Base simulation and fallback remain
-compatible with the original environment. Live trials require both backend
-enable switches and an explicit `allow_live: true` request; all default to off.
+Fill in `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_DEPLOYMENT` locally. Use the resource endpoint, not a Foundry project URL; the backend appends `/openai/v1`. Keep credentials out of `VITE_*` variables, screenshots and Git.
+
+Start the backend with process-only live permission, then run the frontend in a second terminal:
+
+```sh
+FOOTBALL_PUBLIC_MODE=false FOUNDRY_LIVE_ENABLED=true COURTROOM_LIVE_ENABLED=true \
+  FOUNDRY_MAX_RETRIES=0 FOUNDRY_TIMEOUT_SECONDS=120 \
+  .venv/phase4b/bin/python -m uvicorn app.main:app --app-dir backend \
+  --env-file .env --host 127.0.0.1 --port 8000
+```
+
+```sh
+npm run dev --prefix frontend
+```
+
+For an uncached, eligible case, **Begin trial** asks you to confirm the possible charge before generation. A complete trial uses at most four model calls, with zero automatic retries. Daily limits, persistent caching, duplicate protection and failed-case blocks remain active; don't clear private runtime records to retry a case. Cached results require no paid generation. Default startup does not load `.env`; the optional command above does so explicitly.
+
+## Test without Azure requests
+
+All AI tests use mocked responses. From the project root:
+
+```sh
+FOUNDRY_LIVE_ENABLED=false COURTROOM_LIVE_ENABLED=false \
+  PYTHONPATH=backend .venv/phase4b/bin/python -m pytest -q backend/tests
+npm test --prefix frontend
+npm run lint --prefix frontend
+npm run build --prefix frontend
+```
+
+Tests cover the simulator, replay synchronization, case eligibility, agent schemas and grounding, handoffs, caching, cost controls, voting and courtroom rendering.
+
+Local secrets, virtual environments, build outputs and private `.logs/` records are ignored by Git. The bundled trial is a validated public artifact, separate from those private records. Optional Azure hosting templates are in `deploy/`; they have not been deployed and are not needed for this local demo or submission.

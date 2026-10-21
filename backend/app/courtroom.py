@@ -16,6 +16,7 @@ from typing import Optional
 from .courtroom_evidence import InvalidAgentOutput, build_evidence, digest, fallback_parts, validate_submission
 from .courtroom_models import AgentTrace, TrialResult, VerifiedEvidence
 from .foundry import DailyRequestBudget, FoundrySettings, FoundryUnavailable, ROOT, _integer
+from .trial_library import TrialLibrary, cached_view
 
 # Contract-compatible prompt clarifications retain valid caches and failed-case
 # blocks. Exact instructions are fingerprinted in future failure diagnostics.
@@ -132,11 +133,12 @@ def trial_cache_key(evidence, settings, config):
 
 
 class TrialService:
-    def __init__(self, cache=None, budget=None, transport=None):
+    def __init__(self, cache=None, budget=None, transport=None, library=None):
         self.cache = cache if cache is not None else TrialCache()
         self.budget = budget if budget is not None else DailyRequestBudget()
         # Tests inject httpx.MockTransport. Production uses verified direct HTTPS.
         self.transport = transport
+        self.library = library if library is not None else TrialLibrary()
 
     async def analyze(self, match, case_id: str, through_timestamp: int, *, allow_live=False):
         return await self._resolve(match, case_id, through_timestamp, allow_live=allow_live)
@@ -151,6 +153,12 @@ class TrialService:
 
     async def _resolve(self, match, case_id, through_timestamp, *, allow_live=False, prepare_only=False):
         evidence = build_evidence(match, case_id, through_timestamp)
+        try:
+            published = self.library.read(evidence)
+            if published is not None:
+                return cached_view(published)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, InvalidAgentOutput):
+            return fallback(evidence, 'cache_unavailable')
         if not allow_live and not prepare_only:
             return fallback(evidence, 'live_not_requested')
         if (os.environ.get('COURTROOM_LIVE_ENABLED', '').lower() != 'true'
@@ -185,7 +193,8 @@ class TrialService:
                     from .courtroom_workflow import execute_trial
                 except (ImportError, SyntaxError):
                     return fallback(evidence, 'framework_unavailable', key=key)
-                self.cache.write(key, {'status': 'in_progress'})
+                metadata = {'case_id': evidence.case_id, 'evidence_digest': digest(evidence.model_dump())}
+                self.cache.write(key, {'status': 'in_progress', **metadata})
                 try:
                     await execute_trial(state, settings, config, self.budget, self.transport)
                     result = TrialResult(
@@ -198,14 +207,14 @@ class TrialService:
                         error_category=None, http_status=state.http_status, cache_key=key,
                         configuration_version=CONFIGURATION_VERSION,
                     )
-                    self.cache.write(key, {'status': 'completed', 'result': result.model_dump(),
+                    self.cache.write(key, {'status': 'completed', **metadata, 'result': result.model_dump(),
                                            'agent_diagnostics': state.agent_diagnostics})
                     return result
                 except Exception:
                     # Workflow executors sanitize their own errors. Unexpected
                     # errors are also withheld, never interpolated into responses.
                     reason = state.error_category or 'agent_execution_failed'
-                    self.cache.write(key, {'status': 'failed', 'error_category': reason,
+                    self.cache.write(key, {'status': 'failed', **metadata, 'error_category': reason,
                                            'api_attempts': state.api_attempts,
                                            'http_status': state.http_status,
                                            'trace': [entry.model_dump() for entry in state.trace],

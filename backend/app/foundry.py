@@ -73,8 +73,10 @@ class FoundrySettings:
     retries: int
 
     @classmethod
-    def from_env(cls) -> FoundrySettings:
-        if os.environ.get('FOUNDRY_LIVE_ENABLED', '').lower() != 'true':
+    def from_env(cls, *, require_live: bool = True) -> FoundrySettings:
+        # Read-only audit tools may inspect configuration without enabling AI.
+        # Every actual send still calls the default, gated form independently.
+        if require_live and os.environ.get('FOUNDRY_LIVE_ENABLED', '').lower() != 'true':
             raise FoundryUnavailable('Live AI is disabled. Deterministic courtroom remains available.')
         endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT', '').strip().rstrip('/')
         key = os.environ.get('AZURE_OPENAI_API_KEY', '').strip()

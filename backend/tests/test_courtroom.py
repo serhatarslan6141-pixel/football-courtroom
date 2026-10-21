@@ -20,10 +20,11 @@ pytest.importorskip('agent_framework', reason='Full Phase 4B tests require requi
 
 
 @pytest.fixture(autouse=True)
-def isolated(monkeypatch):
+def isolated(monkeypatch, tmp_path):
     for name in list(courtroom.os.environ):
         if name.startswith(('AZURE_OPENAI_', 'FOUNDRY_', 'OPENAI_', 'COURTROOM_')):
             monkeypatch.delenv(name)
+    monkeypatch.setenv('COURTROOM_TRIAL_LIBRARY_DIR', str(tmp_path / 'published-trials'))
     def network_forbidden(*args, **kwargs):
         raise AssertionError('Real sockets are forbidden in Phase 4B tests')
     monkeypatch.setattr(socket.socket, 'connect', network_forbidden)

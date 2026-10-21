@@ -45,25 +45,25 @@ export default function CourtroomSet() {
     >
       <defs>
         <linearGradient id="court-wall" x2="0" y2="1">
-          <stop stopColor="#201d2d" />
-          <stop offset="1" stopColor="#0c0e16" />
+          <stop stopColor="#262a22" />
+          <stop offset="1" stopColor="#111512" />
         </linearGradient>
         <linearGradient id="court-floor" x2="0" y2="1">
-          <stop stopColor="#30262b" />
-          <stop offset="1" stopColor="#0d0d16" />
+          <stop stopColor="#303026" />
+          <stop offset="1" stopColor="#141912" />
         </linearGradient>
         <linearGradient id="court-column">
-          <stop stopColor="#15151f" />
-          <stop offset=".5" stopColor="#38303e" />
-          <stop offset="1" stopColor="#14141e" />
+          <stop stopColor="#191d17" />
+          <stop offset=".5" stopColor="#3b3d30" />
+          <stop offset="1" stopColor="#1a2018" />
         </linearGradient>
       </defs>
       <rect width="1400" height="720" fill="url(#court-wall)" />
       <path d="M0 490 700 440 1400 490V720H0Z" fill="url(#court-floor)" />
-      <g stroke="#aa8b6550" fill="#0f101a">
+      <g stroke="#aa8b6550" fill="#141a14">
         <path d="M88 60h240v385H88Zm984 0h240v385h-240Z" />
         <path d="M105 78h206v345H105Zm984 0h206v345h-206Z" opacity=".4" />
-        <path d="M388 18h624v261H388Z" fill="#201b2c" />
+        <path d="M388 18h624v261H388Z" fill="#242a21" />
         <path d="M405 35h590v227H405Z" opacity=".35" />
       </g>
       <g fill="url(#court-column)" stroke="#77614c50">

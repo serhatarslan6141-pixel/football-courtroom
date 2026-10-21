@@ -1,3 +1,5 @@
+import ClubInsignia from './ClubInsignia.jsx'
+
 export default function ClubCrest({ club, small = false }) {
   return (
     <span
@@ -8,7 +10,7 @@ export default function ClubCrest({ club, small = false }) {
       }}
       aria-hidden="true"
     >
-      <span>{club.shortName}</span>
+      <ClubInsignia club={club} />
     </span>
   )
 }

@@ -10,6 +10,17 @@ ENV/
 .env
 .env.*
 !.env.example
+.envrc
+# Local credential stores and private key material
+.azure/
+.aws/
+.ssh/
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -26,6 +37,11 @@ build/
 dist/
 coverage/
 htmlcov/
+.coverage
+.coverage.*
+.cache/
+# Local Static Web Apps emulator/deployment state
+.swa/
 
 # Local runtime data
 .logs/

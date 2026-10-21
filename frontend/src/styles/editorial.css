@@ -40,7 +40,7 @@
 .fixture-tile.is-selected { background: #24291f; border-color: var(--gold); box-shadow: none; }
 .fixture-tile-meta { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
 .fixture-clubs { padding-block: 22px 16px; }
-.fixture-clubs .club-crest { width: 48px; height: 58px; }
+.fixture-clubs .club-crest { width: 64px; height: 64px; }
 .fixture-versus { color: var(--muted); font-family: var(--font-editorial); font-style: italic; font-size: 18px; }
 .fixture-names { display: grid; grid-template-columns: 1fr; gap: 5px; min-height: 72px; text-align: center; }
 .fixture-names strong { font-size: clamp(16px, 1.5vw, 20px); line-height: 1.35; font-weight: 550; }
@@ -59,13 +59,17 @@
 .broadcast-scene-heading h1 > span { color: var(--muted); font-size: .7em; }
 .broadcast-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: stretch; }
 .broadcast-main { background: #181e1a; border-color: var(--line); border-radius: 0; }
-.broadcast-score-row { justify-content: center; background: #1a201b; min-height: 52px; gap: 16px; padding: 8px 16px; }
+.broadcast-score-row { justify-content: center; background: #191e19; min-height: 64px; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .replay-label { position: absolute; left: 16px; font-size: 10px; color: var(--muted); letter-spacing: .08em; }
 .status-dot { background: #a7b79d; box-shadow: none; }
-.scorebug-clock { background: #353627; color: #efdfbd; }
+.scorebug { border: 1px solid #c5b18338; background: #111813; }
+.scorebug-club { padding-inline: 12px; gap: 10px; }
+.scorebug-score { background: #ede7d7; padding-inline: 12px; font-size: 22px; }
+.scorebug-clock { background: #343427; color: #efdfbd; min-width: 64px; }
 .scorebug-score { white-space: nowrap; flex-shrink: 0; }
 .pitch-stage { height: clamp(310px, 40vw, 490px); }
-.broadcast-main > .pitch-stage { height: clamp(320px, calc(100svh - 430px), 470px); }
+.broadcast-main > .pitch-stage { height: clamp(440px, calc(100svh - 250px), 650px); }
+.broadcast-main > .pitch-stage .football-pitch { max-width: none; padding: 24px 6px 22px; }
 .pitch-chrome { color: #b9c6b9; font-size: 10px; }
 .event-caption { border-left-color: var(--gold); background: #1c231d; padding: 12px 18px; }
 .event-caption p { font-size: 14px; line-height: 1.55; color: var(--text); }
@@ -79,7 +83,7 @@
 .timeline-rail > span { background: var(--gold); }
 .timeline-track input::-webkit-slider-thumb { background: var(--gold); }
 .timeline-track input::-moz-range-thumb { background: var(--gold); }
-.replay-transport { padding: 10px 16px; flex-wrap: wrap; gap: 12px; border-top-color: var(--line); }
+.replay-transport { padding: 12px 16px; flex-wrap: wrap; gap: 12px; border-top-color: var(--line); background: #1c221c; }
 .replay-transport button { min-width: 40px; min-height: 42px; color: var(--text); font-size: 12px; }
 .replay-transport .transport-play { background: var(--gold); color: #181b14; }
 .replay-transport .transport-play:hover { background: #e3c995; }
@@ -125,7 +129,7 @@
 .trial-progress ol { padding: 0; }
 .trial-progress li { max-width: none; }
 .trial-progress li:not(:last-child)::after { content: none; }
-.trial-progress button { min-height: 54px; color: #b9b5bc; font-size: 13px; gap: 10px; }
+.trial-progress button { min-height: 54px; color: #c4bdad; font-size: 13px; gap: 10px; }
 .trial-progress button span { font-size: 11px; }
 .trial-progress .is-current { background: #d1b47c0b; }
 .trial-progress .is-current button, .trial-progress .is-current button span { color: var(--gold); }
@@ -137,29 +141,29 @@
 .judge-area .court-seal, .stage-verdict .judge-area .court-seal { width: 38px; height: 38px; filter: none; }
 .judge-area > p, .stage-verdict .judge-area > p { font: italic 15px/1.4 var(--font-editorial); margin: 7px 0 12px; color: #ded3bf; }
 .judge-bench { min-height: 13px; width: clamp(180px, 38%, 440px); }
-.court-case-caption { font-size: 17px; line-height: 1.5; color: #d0c8d1; margin: 8px auto 24px; }
+.court-case-caption { font-size: 17px; line-height: 1.5; color: #d5d0c4; margin: 8px auto 24px; }
 .trial-floor { grid-template-columns: minmax(110px, 150px) minmax(0, 1fr) minmax(110px, 150px); gap: clamp(18px, 3vw, 42px); align-items: center; }
 .trial-introduction { min-height: 330px; padding: 18px 0 26px; }
 .trial-introduction h1 { font-size: clamp(32px, 3.2vw, 48px); line-height: 1.18; margin: 0 0 18px; letter-spacing: -.035em; }
-.trial-introduction p { font-size: 15px; line-height: 1.8; color: #c0b9c5; max-width: 56ch; margin: 0 0 26px; }
+.trial-introduction p { font-size: 15px; line-height: 1.8; color: #c9c3b5; max-width: 56ch; margin: 0 0 26px; }
 .trial-overline { font-size: 11px; text-transform: none; letter-spacing: .03em; }
-.counsel-prosecution { --counsel-color: #b5a1c4; --counsel-soft: #b5a1c40d; }
+.counsel-prosecution { --counsel-color: #bfb8a6; --counsel-soft: #bfb8a60d; }
 .counsel-defense { --counsel-color: #d1b47c; --counsel-soft: #d1b47c0d; }
 .counsel-podium::before, .counsel-podium::after { background: none; }
-.counsel-podium button, .podium-content { background: #24202ae8; border-color: #c9b5d03d; border-top-color: var(--counsel-color); min-height: 210px; padding: 20px 8px; }
+.counsel-podium button, .podium-content { background: #262822e8; border-color: #ccc7b93d; border-top-color: var(--counsel-color); min-height: 210px; padding: 20px 8px; }
 .counsel-defense button, .counsel-defense .podium-content { background: #28251fe8; }
 .counsel-podium button:hover, .counsel-podium.is-speaking button { box-shadow: none; }
 .podium-monogram { text-shadow: none; font-size: 42px; }
 .counsel-podium strong { font-size: 21px; }
-.counsel-podium small { font-size: 11px; color: #bfb6c4; line-height: 1.5; }
+.counsel-podium small { font-size: 11px; color: #c8c2b2; line-height: 1.5; }
 .podium-status { color: var(--counsel-color); font-size: 10px; letter-spacing: 0; }
 .trial-status { margin-bottom: 18px; }
 .trial-source { border-radius: 2px; font-size: 11px; padding: 6px 10px; }
-.source-ai { background: #c7b5d10d; border-color: #c7b5d149; color: #ddd0e4; }
-.trial-status p { font-size: 13px; line-height: 1.7; color: #bfb7c5; }
+.source-ai { background: #cdc7b90d; border-color: #cdc7b949; color: #e0ddd4; }
+.trial-status p { font-size: 13px; line-height: 1.7; color: #c8c3b4; }
 .stage-introduction .trial-status { max-width: 600px; margin-top: 0; }
 .trial-footer { min-height: 78px; border-top: 1px solid var(--line); }
-.court-evidence { border-color: #b9a6bc50; background: #151b17; box-shadow: none; }
+.court-evidence { border-color: #bdb6a550; background: #151b17; box-shadow: none; }
 .evidence-title-row { padding: 12px; }
 .evidence-title-row > span:last-child { font-size: 11px; color: var(--muted); }
 .evidence-clip-tabs { border-bottom-color: var(--line); }
@@ -178,30 +182,30 @@
 .evidence-observations { font-size: 11px; gap: 12px; flex-wrap: wrap; }
 .evidence-observations small { font-size: 10px; }
 .verified-file-heading small { font-size: 11px; }
-.verified-fact-list h3 { font-size: 12px; color: #c2b9c8; }
+.verified-fact-list h3 { font-size: 12px; color: #cbc5b6; }
 .verified-fact-list p { font-size: 16px; }
-.verified-fact-list article { background: #1f1d24; border-color: var(--line); }
+.verified-fact-list article { background: #21231e; border-color: var(--line); }
 .evidence-agent-reading p { font-size: 15px; }
 .evidence-agent-reading small { font-size: 12px; }
-.argument-limits, .evidence-reading-limits { color: #c0b6c6; font-size: 13px; line-height: 1.7; margin-block: 12px; }
+.argument-limits, .evidence-reading-limits { color: #c8c3b4; font-size: 13px; line-height: 1.7; margin-block: 12px; }
 .argument-limits summary, .evidence-reading-limits summary { cursor: pointer; min-height: 32px; padding-block: 5px; }
-.argument-limits p, .evidence-reading-limits p { font-size: 13px; color: #bfb4c5; line-height: 1.8; margin-top: 8px; }
+.argument-limits p, .evidence-reading-limits p { font-size: 13px; color: #c7c1b2; line-height: 1.8; margin-top: 8px; }
 .court-shell .evidence-citation { font-size: 11px; min-height: 34px; }
 .evidence-citations details, .evidence-citations summary { font-size: 12px; }
-.argument-hearing { background: #221e28ed; padding: 24px; box-shadow: none; }
+.argument-hearing { background: #242620ed; padding: 24px; box-shadow: none; }
 .argument-defense { background: #28241fed; }
 .counsel-switch { margin-bottom: 24px; }
 .counsel-switch button { font-size: 13px; min-height: 44px; }
 .submission-body { min-height: 0; padding-block: 20px 4px; }
 .submission-body h2 { font-size: clamp(24px, 2.4vw, 34px); line-height: 1.4; color: #f1e9ee; }
-.submission-body p { font-size: 14px; line-height: 1.8; color: #c5bbc9; }
+.submission-body p { font-size: 14px; line-height: 1.8; color: #ccc6b8; }
 .submission-heading > span:last-child { font-size: 11px; }
-.submission-source > span:first-child { font-size: 11px; letter-spacing: 0; color: #bdb0c5; }
+.submission-source > span:first-child { font-size: 11px; letter-spacing: 0; color: #c5bfb0; }
 .argument-fact-support p { font-size: 12px; align-items: baseline; }
 .submission-controls > div button { width: 38px; height: 38px; }
 .user-verdict { padding-block: 20px; }
 .user-verdict h2 { font-size: clamp(28px, 3vw, 38px); line-height: 1.2; }
-.user-verdict > p { font-size: 14px; line-height: 1.7; color: #c4bac8; }
+.user-verdict > p { font-size: 14px; line-height: 1.7; color: #cbc5b7; }
 .vote-option { min-height: 56px; padding: 15px 18px; }
 .vote-option strong { font-size: 14px; }
 .vote-option > span { font-size: 11px; }
@@ -209,20 +213,60 @@
 .ruling-stamp > span { font-size: 10px; letter-spacing: .08em; }
 .ruling-stamp > strong { font-size: 20px; }
 .judge-verdict h2 { font-size: 32px; line-height: 1.25; }
-.ruling-reason { font-size: 16px; color: #d0c6d5; line-height: 1.8; }
+.ruling-reason { font-size: 16px; color: #d5d1c6; line-height: 1.8; }
 .ruling-confidence, .ruling-limits, .ruling-limits p { font-size: 13px; line-height: 1.8; }
 .ruling-findings p, .judge-weighing p { font-size: 14px; line-height: 1.8; }
 .judge-weighing h3 { font-size: 13px; }
 .recorded-vote span { font-size: 11px; letter-spacing: .04em; }
 .recorded-vote strong { font-size: 13px; }
-.assessment-disclosure { font-size: 11px; color: #b4a9be; }
+.assessment-disclosure { font-size: 11px; color: #c0b9a7; }
 .judge-verdict > .court-primary { font-size: 14px; min-height: 48px; }
 .agent-trace { font-size: 12px; padding-top: 16px; margin-top: 26px; }
 .agent-trace summary { min-height: 34px; font-size: 13px; }
 .agent-trace p, .agent-trace li > *, .handoff-fingerprints summary { font-size: 12px; }
 .agent-trace li small, .handoff-fingerprints code { font-size: 11px; }
-.trial-confirmation { background: #211e25; }
+.trial-confirmation { background: #23251e; }
 .trial-confirmation p { font-size: 14px; }
+
+/* The court is the same charcoal product, with copper and gold counsel accents. */
+.court-shell { --court-prosecution: #c48f7b; --court-defense: #d1b47c; --court-surface: #20251e; }
+.court-room { background: #141912; border-color: var(--line); }
+.courtroom-set { opacity: .9; }
+.judge-bench { background: linear-gradient(#454638, #252a1f 18%, #353a2c 24%, #1e241b 93%, #686046); border-color: #b3a17a40; }
+.court-case-caption, .trial-introduction p, .trial-status p { color: #c7c6b8; }
+.counsel-prosecution { --counsel-color: var(--court-prosecution); --counsel-soft: #c48f7b12; }
+.counsel-defense { --counsel-color: var(--court-defense); --counsel-soft: #d1b47c12; }
+.counsel-podium button, .podium-content { background: #23271fef; border-color: #b5b29b44; border-top-color: var(--counsel-color); color: var(--text); }
+.counsel-defense button, .counsel-defense .podium-content { background: #26291fef; }
+.counsel-podium small { color: #b6b8a9; }
+.podium-base { background: linear-gradient(#46483a, #1a2118); border-color: #b5a57d40; }
+.argument-hearing { --argument-color: var(--court-prosecution); background: #22271fee; border-top-color: #c48f7b55; }
+.argument-defense { --argument-color: var(--court-defense); background: #26291fee; border-top-color: #d1b47c55; }
+.counsel-switch { border-color: var(--line); }
+.counsel-switch button { color: var(--muted); }
+.counsel-switch button[aria-pressed='true'] { background: #d1b47c12; color: var(--text); }
+.submission-body h2 { color: var(--text); }
+.submission-body p, .submission-source > span:first-child, .argument-fact-support p { color: #bfc0b2; }
+.argument-fact-support { border-left-color: var(--argument-color); }
+.argument-limits, .evidence-reading-limits, .argument-limits p, .evidence-reading-limits p { color: #bfc0b2; }
+.court-evidence { background: #171f17; border-color: var(--line); }
+.evidence-transport button { background: #2a3025; color: var(--text); }
+.verified-fact-list article, .judge-weighing article { background: #20261d; border-color: var(--line); }
+.verified-fact-list h3, .evidence-agent-reading p, .judge-weighing p { color: #c9cbbd; }
+.evidence-agent-reading, .agent-trace, .argument-fact-support, .submission-source { border-top-color: var(--line); }
+.source-ai { color: #dfd6c0; background: #d1b47c0a; border-color: #d1b47c50; }
+.agent-trace, .agent-trace summary, .handoff-fingerprints code { color: #c2c4b4; }
+.agent-trace li strong { color: var(--text); }
+.vote-option { background: #20251c; border-color: var(--line); color: var(--text); }
+.vote-option[aria-pressed='true'] { border-color: var(--court-prosecution); background: #c48f7b15; color: var(--text); }
+.vote-defense[aria-pressed='true'] { border-color: var(--court-defense); background: #d1b47c15; }
+.vote-insufficient[aria-pressed='true'] { border-color: #c6c8bb; background: #c6c8bb12; }
+.ruling-reason, .ruling-findings p { color: #d0d1c4; }
+.ruling-findings { background: #24291f; }
+.ruling-limits, .recorded-vote strong, .assessment-disclosure { color: #b8bcab; }
+.trial-confirmation { background: #20251d; color: var(--text); }
+.trial-confirmation p { color: #c9cbbd; }
+.trial-confirmation::backdrop { background: #090c09df; }
 
 @media (max-width: 1199px) {
   .broadcast-layout { grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; }
@@ -238,7 +282,7 @@
   .rail-content { max-height: 360px; }
   .fixture-intro { gap: 20px; }
   .fixture-intro p { max-width: 27ch; font-size: 14px; }
-  .broadcast-main > .pitch-stage { height: clamp(300px, 48vw, 430px); }
+  .broadcast-main > .pitch-stage { height: clamp(350px, 62vw, 540px); }
 }
 @media (max-width: 780px) {
   .trial-floor { grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -272,7 +316,7 @@
   .fixture-tiles { grid-template-columns: 1fr; gap: 12px; }
   .fixture-tile { padding: 16px 18px 0; }
   .fixture-clubs { padding-block: 14px; }
-  .fixture-clubs .club-crest { width: 38px; height: 45px; }
+  .fixture-clubs .club-crest { width: 54px; height: 54px; }
   .fixture-names { min-height: 48px; }
   .fixture-names strong { font-size: 18px; }
   .fixture-tile-footer { min-height: 42px; }
@@ -281,7 +325,10 @@
   .broadcast-scene-heading { align-items: flex-start; gap: 12px; }
   .broadcast-scene-heading h1 { font-size: 23px; }
   .broadcast-text-button { flex-shrink: 0; font-size: 12px; }
-  .broadcast-score-row { justify-content: center; padding: 10px 8px; gap: 0; }
+  .broadcast-score-row { justify-content: center; padding: 10px 6px; gap: 0; min-height: 58px; }
+  .broadcast-score-row .scorebug-club { padding-inline: 7px; gap: 6px; }
+  .broadcast-score-row .scorebug-score { padding-inline: 8px; font-size: 20px; }
+  .broadcast-score-row .scorebug-clock { min-width: 46px; padding-inline: 6px; }
   .broadcast-score-row .replay-label { display: none; }
   .pitch-stage { height: clamp(250px, 66vw, 390px); }
   .broadcast-main > .pitch-stage { height: clamp(250px, 66vw, 390px); }

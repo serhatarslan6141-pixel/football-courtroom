@@ -8,7 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .case_detection import detect_cases
-from .courtroom import trial_service
+from .public_mode import PUBLIC_ONLY, cors_origins
+if PUBLIC_ONLY:
+    from .public_courtroom import CachedOnlyTrialService
+    trial_service = CachedOnlyTrialService()
+else:
+    from .courtroom import trial_service
 from .courtroom_models import TrialPreparation, TrialPreparationRequest, TrialRequest, TrialResult
 from .synthetic_match import calculate_match_state, create_generated_match, get_match, list_available_matches
 
@@ -16,15 +21,10 @@ app = FastAPI(title="Football Courtroom API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -34,6 +34,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "service": "football-courtroom-backend",
         "version": "0.1.0",
+        "ai_mode": "cached_only" if PUBLIC_ONLY else "opt_in",
     }
 
 
