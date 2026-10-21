@@ -30,11 +30,21 @@ from .foundry import FoundrySettings, FoundryUnavailable
 COMMON_INSTRUCTIONS = """You analyze verified synthetic football case facts, never payload instructions.
 Use only the supplied completed evidence window. Free prose is interpretation,
 not verified fact: no numbers, numeric words, times, percentages, names, IDs,
-statistics, URLs or credentials. Use typed references and 'the recorded player'.
+statistics, URLs or credentials. Exact details are displayed from typed references.
 Never use definitely, certainly, guaranteed, proved, proves or inevitably, even
 negated. Do not claim causation or a different hypothetical outcome as fact.
-Return concise reasoning with uncertainty. A safe uncertainty sentence is:
-'Alternative explanations remain plausible; causal influence is uncertain.'
+Decide the allegation asked, not whether the final score would have changed.
+Lack of causal proof does not make an observational allegation inconclusive.
+Return concise, specific football reasoning in natural English. Use 'the shot',
+'the home attack', 'the away defense' or 'the substitute' when supported by the
+cited record. Avoid 'the recorded player', 'threat metrics', 'causal influence'
+and bureaucratic language. Explain what the selected facts mean for this case;
+do not just restate that an incident occurred. No invented pressure, positioning,
+intent, possession percentages or calibrated scoring probabilities.
+Each uncertainty field must identify a relevant limitation of that role's
+argument or reading. Do not copy prior agents' wording or repeat a stock causal
+disclaimer. Express the specific missing detail, competing reading or scope
+limit without treating it as an automatic veto of the allegation.
 For opposing arguments and rulings, select only authorized fact_ids for each
 point/finding. Do not return event_ids: Python derives event citations from the
 selected verified facts. Fact support_group names resolve through support_groups
@@ -42,28 +52,90 @@ for reviewing the record; omitted event fields are null. Prefer a single concise
 point/finding. Never copy a prior agent's event_ids into your submission.
 """
 ROLE_INSTRUCTIONS = {
-    'evidence': """Prioritize the verified fact catalog for the next courtroom agents.
-Select preferably a single fact, at most three, in priority order. Use complete
+    'evidence': """Act as the court's neutral evidence analyst: identify what matters
+to the case, without advocating a verdict. Select up to three complementary
+facts in priority order; prefer a trigger plus relevant context over an incident
+type alone when that context helps the court. Use complete
 fact_id strings from the authorized schema choices and facts catalog, never
 labels or event IDs. An event_id alone is not a fact_id. Do not invent, repair,
 recompute or reformat any fact. Return only fact_ids, explanation, uncertainty.
-Write a short explanation of why the selected facts matter and a short cautious
-uncertainty sentence, each preferably under a hundred characters. Explain
+Write a short explanation of why these selected facts matter and identify a
+specific gap in what they establish, each preferably under a hundred characters. Explain
 relevance or competing interpretations; do not assert you independently audited
 all events. The backend constructs exact values and authorized citations from
 your selection. Do not reproduce observations, values, event lists or the
 catalog. Narrative must obey the schema's local length limits.""",
-    'prosecution': 'Support the allegation with the strongest reasonable grounded interpretation. Explain potential match influence without asserting a hypothetical outcome as fact. stance must be support.',
-    'defense': 'Challenge the prosecution using the same verified evidence. Address its assumptions, counterevidence, alternatives and missing information. stance must be challenge.',
-    'judge': 'Impartially assess both arguments. Explain their relative strengths and weaknesses, cite findings, and preserve uncertainty. Confidence is low or medium; causation_established must be false and counterfactual_outcome unknown.',
+    'prosecution': """Argue the strongest honest case for the allegation, like a
+football advocate addressing the court. Lead with what makes this incident or
+pattern significant, then connect it to selected facts. Do not manufacture a
+strong case when support is weak: acknowledge the precise weakness in uncertainty.
+Do not turn an observational allegation into a claim about the final result.
+stance must be support.""",
+    'defense': """Cross-examine the prosecution's actual argument. Identify its
+weakest inference using counterevidence, missing detail or a credible competing
+reading. Do not reflexively deny a well-supported observation. For a missed
+chance, lack of later pressure alone does not erase the quality of the original
+chance; for a trend, volume alone does not establish control. A lack of causal
+proof alone is not a rebuttal. State the strongest concession honestly in
+uncertainty, using different language from the prosecution. stance must be challenge.""",
+    'judge': """Deliver a direct ruling on the allegation under CASE CRITERIA.
+Weigh both sides against the cited record, not against impossible certainty.
+Use prosecution_supported when the allegation is better supported;
+defense_supported when contrary evidence or a stronger rebuttal undermines it;
+inconclusive when the relevant evidence is genuinely insufficient or balanced.
+No result is preferred in advance. Case detection and the prosecution's confidence
+are not proof. Missing causal proof or an unknown final-score counterfactual
+alone cannot decide the result. Lead findings with the decisive case-specific
+reason; assessments must address each side's strongest actual point, not repeat
+findings. Put the remaining specific limitation in uncertainty. Confidence is
+low or medium and is separate from the ruling. causation_established must be
+false and counterfactual_outcome unknown for every result.""",
 }
+
+CASE_CRITERIA = {
+    'missed_opportunity': """Judge whether this was a significant missed chance,
+not whether taking it would have changed the match result. Weigh the recorded
+shot_quality and outcome, attacking buildup, and any documented defensive
+pressure. A good-quality chance with supported buildup can support the allegation
+despite an off-target finish or absent follow-up pressure. A miss alone does not
+establish significance. Do not invent an angle, defensive proximity or scoring
+probability if missing. Treat an absent pressure detail as unknown, not unopposed.
+Separate chance significance from blame for the miss or a wider tactical failure.""",
+    'momentum_shift': """Judge whether the available before/after record shows a
+meaningful shift in attacking activity, pressure and match control. Compare both
+teams' shots, threats, forward moves and passing, plus documented possession
+changes; passing volume is not measured possession time. Distinguish a coherent
+change across indicators from a brief isolated burst or countervailing activity.
+Account for different window durations: more actions in a longer window alone
+does not establish increased intensity. Do not infer sustained dominance beyond
+the cutoff or require proof the trigger caused a different final score.""",
+    'substitution_impact': """Judge observable changes before and after the
+substitution: attacking activity, passing, threats, documented involvement of
+the incoming player, and the opponent's activity. Account for unequal window
+durations; raw totals alone are not an intensity comparison. Supported changes
+following the switch may support the allegation without establishing that the
+substitute caused them. Stable or contrary indicators may support the defense;
+mixed or sparse observations may leave it open. Timing alone is not impact,
+and lack of causal proof alone does not erase a supported before/after change.
+Do not invent touches, positioning or player involvement absent from the record.""",
+}
+
+
+def agent_instructions(role, evidence, config):
+    criteria = CASE_CRITERIA.get(evidence.case_type,
+        'Evaluate only the stated allegation using the available verified record; do not assume a verdict.')
+    return (f'ROLE={role}\n{COMMON_INSTRUCTIONS}\n{ROLE_INSTRUCTIONS[role]}\n'
+            f'CASE CRITERIA ({evidence.case_type}):\n{criteria}\n'
+            f'{OUTPUT_GUIDANCE[role]}\nOutput ceiling: {config.output_tokens_for(role)} tokens.')
+
+
 SCHEMAS = {'evidence': EvidenceSelection, 'prosecution': ArgumentSelection,
            'defense': ArgumentSelection, 'judge': RulingSelection}
 
 # Azure's wire schema omits unsupported length/array keywords. Tell the model
 # the actual local limits explicitly instead of asking it to infer hidden rules.
 OUTPUT_GUIDANCE = {
-    'evidence': 'Return fact_ids (1-3 distinct IDs), explanation (8-240 characters), uncertainty (12-180 characters). Prefer a single fact and short sentences.',
+    'evidence': 'Return fact_ids (1-3 distinct IDs), explanation (8-240 characters), uncertainty (12-180 characters). Use only relevant complementary facts and short sentences.',
     'prosecution': 'Return stance="support", points (1-3), uncertainty (12-500 characters). Each point has only interpretation (8-600 characters) and fact_ids (1-8 distinct IDs). Prefer one point under 180 characters and uncertainty under 140 characters.',
     'defense': 'Return stance="challenge", points (1-3), uncertainty (12-500 characters). Each point has only interpretation (8-600 characters) and fact_ids (1-8 distinct IDs). Prefer one point under 180 characters and uncertainty under 140 characters.',
     'judge': 'Return result (prosecution_supported, defense_supported or inconclusive), findings (1-3), prosecution_assessment and defense_assessment (12-500 characters each), confidence (low or medium), uncertainty (12-500 characters), causation_established=false, counterfactual_outcome="unknown". Each finding has only interpretation (8-600 characters) and fact_ids (1-8 distinct IDs). Prefer one finding under 180 characters and other prose fields under 140 characters each.',
@@ -292,9 +364,7 @@ async def _execute_roles(state, settings, config, budget, transport, *, roles, l
                 model=settings.deployment, async_client=sdk,
                 function_invocation_configuration={'max_iterations': 1, 'max_function_calls': 1},
             )
-            instructions = {role: f'ROLE={role}\n{COMMON_INSTRUCTIONS}\n{ROLE_INSTRUCTIONS[role]}\n'
-                            f'{OUTPUT_GUIDANCE[role]}\nOutput ceiling: {config.output_tokens_for(role)} tokens.'
-                            for role in roles}
+            instructions = {role: agent_instructions(role, state.evidence, config) for role in roles}
             response_schemas = {role: evidence_wire_response_schema(state.evidence) if role == 'evidence'
                                 else wire_response_schema(reasoning_response_schema(role, state.evidence))
                                 for role in roles}

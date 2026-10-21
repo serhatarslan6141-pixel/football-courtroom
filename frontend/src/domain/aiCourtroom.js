@@ -125,7 +125,7 @@ export function adaptCourtroomResponse(response, item, events, match, returnPosi
     requireValue(argument?.stance === (side === 'prosecution' ? 'support' : 'challenge')
       && Array.isArray(argument.points) && argument.points.length > 0 && argument.points.length <= 3)
     argumentsFor[side] = argument.points.map((value, index) => ({
-      ...point(value, `${side}-${index}`, side === 'prosecution' ? 'The case for the allegation' : 'The case for reasonable doubt'),
+      ...point(value, `${side}-${index}`, side === 'prosecution' ? 'The case for the allegation' : 'The case against the allegation'),
       context: text(argument.uncertainty),
     }))
   }
@@ -134,6 +134,8 @@ export function adaptCourtroomResponse(response, item, events, match, returnPosi
   requireValue(ruling && Object.hasOwn(labels, ruling.result) && ['low', 'medium'].includes(ruling.confidence)
     && ruling.causation_established === false && ruling.counterfactual_outcome === 'unknown'
     && Array.isArray(ruling.findings) && ruling.findings.length > 0 && ruling.findings.length <= 3)
+  const findings = ruling.findings.map((value, index) => point(value, `finding-${index}`, 'The judge’s finding'))
+  text(ruling.uncertainty)
   return {
     ...base, ...metadata, source: response.source, arguments: argumentsFor,
     evidenceFacts: observations, evidenceInterpretation: { ...evidenceInterpretation, context: contribution.uncertainty },
@@ -141,11 +143,11 @@ export function adaptCourtroomResponse(response, item, events, match, returnPosi
       source: response.source, result: ruling.result, label: labels[ruling.result],
       headline: ruling.result === 'inconclusive' ? 'The court leaves room for doubt.' : ruling.result === 'prosecution_supported'
         ? 'The allegation has the stronger case.' : 'The defense raises the stronger case.',
-      reason: text(ruling.uncertainty), confidence: ruling.confidence,
-      findings: ruling.findings.map((value, index) => point(value, `finding-${index}`, 'The judge’s finding')),
+      reason: findings[0].text, leadFindingId: findings[0].id, confidence: ruling.confidence,
+      findings,
       sides: [{ name: 'Prosecution', text: text(ruling.prosecution_assessment) }, { name: 'Defense', text: text(ruling.defense_assessment) }],
       limitations: [ruling.uncertainty, ...file.limitations.map((value) => text(value))],
-      disclosure: 'AI-generated reasoning over verified synthetic match facts. This is not proof of causation or of a different match outcome.',
+      disclosure: 'AI analysis of verified synthetic match facts. This ruling addresses the allegation within the case window.',
     },
   }
 }

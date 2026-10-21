@@ -27,6 +27,20 @@ describe('AI response presentation boundary', () => {
     expect(trial.fallbackMessage).toContain('switched off')
   })
 
+  it.each(['prosecution_supported', 'defense_supported', 'inconclusive'])(
+    'leads a %s ruling with its cited finding, keeping uncertainty separate', (result) => {
+      const response = aiTrialResponse()
+      response.judge.result = result
+      const trial = adapt(response)
+      expect(trial.assessment.result).toBe(result)
+      expect(trial.assessment.reason).toBe(AI_COPY.judge)
+      expect(trial.assessment.reason).not.toBe(response.judge.uncertainty)
+      expect(trial.assessment.leadFindingId).toBe(trial.assessment.findings[0].id)
+      expect(trial.assessment.findings[0].eventIds).toEqual(['goal'])
+      expect(trial.assessment.limitations).toContain(response.judge.uncertainty)
+    },
+  )
+
   it.each(['match', 'case', 'seed', 'cutoff', 'start', 'event', 'outcome', 'missing_event', 'duplicate_event',
     'future_citation', 'unknown_fact', 'wrong_quantity', 'mismatched_citation', 'trace', 'cached_attempts', 'live_attempts', 'extra_trigger', 'causation'])(
     'rejects %s corruption instead of partially repairing it', (kind) => {

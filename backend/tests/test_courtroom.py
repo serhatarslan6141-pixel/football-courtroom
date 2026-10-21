@@ -1196,7 +1196,7 @@ def test_exact_case_canonical_evidence_validation_boundaries(
 ])
 def test_evidence_prompt_narrative_examples_match_unchanged_validator(
         enabled, wired, match, evidence, uncertainty, expected_reason):
-    """The prompt's safe example passes; literal banned words still fail even
+    """Previously suggested wording remains valid; literal banned words fail even
     in semantically cautious prose. Typed numeric facts remain permissible.
     """
     from app.courtroom_evidence import digest
@@ -1211,7 +1211,7 @@ def test_evidence_prompt_narrative_examples_match_unchanged_validator(
     assert set(body['text']['format']['schema']['properties']) == {
         'fact_ids', 'explanation', 'uncertainty'}
     if expected_reason is None:
-        assert uncertainty in body['instructions']  # Exact recommended wording.
+        assert uncertainty not in body['instructions']  # No stock sentence to copy.
         assert result.source == 'live_ai'
         assert result.evidence_agent.observations[0].value == fact.value
         assert len(wire.calls) == 4

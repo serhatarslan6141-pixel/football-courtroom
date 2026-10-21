@@ -1,5 +1,9 @@
 # Offline agent pipeline reliability review
 
+Writing follow-up: [case-specific judging and courtroom writing](courtroom-reasoning-review.md)
+separates observable allegations from causal proof, clarifies the four voices,
+and improves ruling presentation while preserving the successful demo cache.
+
 Latest: [complete offline stabilization](pipeline-stabilization.md) reviews all
 four agents together, adds shared prompt/schema and diagnostic fixes, and
 verifies real-framework FastAPI responses through the cinematic React flow.
