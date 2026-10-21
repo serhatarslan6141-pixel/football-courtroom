@@ -56,10 +56,6 @@ export default function MatchSideRail({
   }
   return (
     <aside className="match-side-rail" aria-label="Match details">
-      <div className="rail-heading">
-        <span className="broadcast-kicker">THE MATCH FILE</span>
-        <span className="rail-edition">FC / 01</span>
-      </div>
       <div
         className="rail-tabs"
         role="tablist"
@@ -94,9 +90,9 @@ export default function MatchSideRail({
         {tab === 'stats' ? (
           <>
             <div className="stat-clubs">
-              <strong style={{ color: home.color }}>{home.shortName}</strong>
+              <strong style={{ '--club-color': home.color }}>{home.shortName}</strong>
               <span>MATCH STATS</span>
-              <strong style={{ color: away.color }}>{away.shortName}</strong>
+              <strong style={{ '--club-color': away.color }}>{away.shortName}</strong>
             </div>
             {rows.map(([label, values, format]) => (
               <div className="broadcast-stat" key={label}>
@@ -109,10 +105,10 @@ export default function MatchSideRail({
                 </strong>
               </div>
             ))}
-            <p className="rail-footnote">
+            <details className="rail-footnote"><summary>About these statistics</summary><p>
               Statistics reflect the current replay position. Possession uses
               recorded in-play action durations.
-            </p>
+            </p></details>
           </>
         ) : null}
         {tab === 'events' ? (
@@ -183,14 +179,6 @@ export default function MatchSideRail({
             )}
           </div>
         ) : null}
-      </div>
-      <div className="rail-bottom">
-        <BroadcastIcon name="court" />
-        <p>
-          Every moment has two sides.
-          <br />
-          <span>Follow the match. Make your case.</span>
-        </p>
       </div>
     </aside>
   )

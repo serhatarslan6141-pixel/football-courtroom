@@ -51,16 +51,15 @@ export default function ArgumentHearing({
         <h2 id="argument-heading">
           {point?.text || 'There is no complete submission on record.'}
         </h2>
-        <p>
+        {isAiSource(trial.source) ? <details className="argument-limits"><summary>Limits of this argument</summary><p>{point?.context}</p></details> : <p>
           {point?.context ||
             (point
               ? 'A counterpoint included in the case record.'
               : 'The court cannot fill gaps in the evidence.')}
-        </p>
+        </p>}
       </div>
       <div className="submission-source">
-        <span>{isAiSource(trial.source) ? 'AI INTERPRETATION · CITED MATCH FACTS' : 'FROM THE CASE RECORD'}</span>
-        <span>{point?.title || 'Evidence unavailable'}</span>
+        <span>{isAiSource(trial.source) ? 'AI interpretation · Verified support below' : 'Recorded analysis'}</span>
       </div>
       {point?.supports?.length ? <div className="argument-fact-support" aria-label="Verified support for this argument">
         {point.supports.map((fact) => <p key={fact.id}><span>{fact.title}</span><strong>{fact.text}</strong></p>)}

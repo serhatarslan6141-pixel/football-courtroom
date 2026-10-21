@@ -8,9 +8,6 @@ export default function CounselPodium({
   const title = side === 'prosecution' ? 'Prosecution' : 'Defense'
   const content = (
     <>
-      <span className="counsel-number">
-        {side === 'prosecution' ? '01' : '02'} / COUNSEL
-      </span>
       <span className="podium-monogram" aria-hidden="true">
         {side === 'prosecution' ? 'P' : 'D'}
       </span>
@@ -21,13 +18,7 @@ export default function CounselPodium({
           ? `${count} ${side === 'prosecution' ? (count === 1 ? 'submission' : 'submissions') : count === 1 ? 'counterpoint' : 'counterpoints'}`
           : 'No submission on record'}
       </small>
-      <span className="podium-status">
-        {active
-          ? 'PRESENTING THE CASE'
-          : interactive
-            ? 'HEAR THIS SIDE ↗'
-            : 'AWAITING THE FLOOR'}
-      </span>
+      {interactive && <span className="podium-status">{active ? 'Speaking' : 'Hear this side ↗'}</span>}
     </>
   )
   return (

@@ -73,7 +73,7 @@ describe('new match creation in the fixture lobby', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Creating match…' }))
     expect(api.createMatch).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('status').textContent).toContain(
-      'Preparing a new 90 minutes',
+      'Creating your match',
     )
     await act(async () => pending.resolve(api.publish()))
     await ready()
@@ -113,7 +113,7 @@ describe('new match creation in the fixture lobby', () => {
     )
     await ready()
     expect(api.createMatch).toHaveBeenCalledTimes(2)
-    expect(screen.getByText('5 simulated matches')).toBeTruthy()
+    expect(screen.getByText('5 available')).toBeTruthy()
     first.unmount()
     const second = await lobby(api)
     await second.user.click(
@@ -193,7 +193,7 @@ describe('new match creation in the fixture lobby', () => {
         onCreate={() => {}}
       />,
     )
-    expect(screen.getByText('100 simulated matches')).toBeTruthy()
+    expect(screen.getByText('100 available')).toBeTruthy()
     expect(screen.queryByRole('combobox')).toBeNull()
     expect(
       screen.getByRole('button', {

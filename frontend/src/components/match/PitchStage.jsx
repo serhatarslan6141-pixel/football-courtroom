@@ -88,7 +88,7 @@ export default function PitchStage({
       <svg
         className="football-pitch"
         viewBox="-5 -5 115 78"
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`Football pitch${current ? `: ${type.replace(/_/g, ' ')}` : ''}`}
       >

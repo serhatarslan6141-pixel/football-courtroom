@@ -56,6 +56,23 @@ it('has only Begin trial, with no requests from opening or StrictMode rerenders'
   expect(api.generateAiTrial).not.toHaveBeenCalled()
 })
 
+it('keeps AI uncertainty accessible in evidence and argument disclosures', async () => {
+  const { user, api } = await openTrial(makeApi('cached_ai'))
+  await begin(user, false)
+  const reading = screen.getByText('Limits of this reading').closest('details')
+  expect(reading.open).toBe(false)
+  await user.click(screen.getByText('Limits of this reading'))
+  expect(reading.open).toBe(true)
+  expect(reading.textContent).toContain(aiTrialResponse().evidence_agent.uncertainty)
+  await user.click(screen.getByRole('button', { name: 'Hear the arguments' }))
+  const argument = screen.getByText('Limits of this argument').closest('details')
+  expect(argument.open).toBe(false)
+  await user.click(screen.getByText('Limits of this argument'))
+  expect(argument.open).toBe(true)
+  expect(argument.textContent).toContain(aiTrialResponse().prosecution.uncertainty)
+  expect(api.generateAiTrial).not.toHaveBeenCalled()
+})
+
 it('requires charge confirmation, supports cancellation and reuses the non-billable lookup', async () => {
   const { user, api } = await openTrial()
   await user.click(screen.getByRole('button', { name: 'Begin trial' }))

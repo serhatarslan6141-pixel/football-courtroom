@@ -5,13 +5,12 @@ export default function UserVerdict({ vote, onVote }) {
   const [choice, setChoice] = useState(vote)
   return (
     <section className="user-verdict" aria-labelledby="vote-heading">
-      <span className="trial-overline">YOUR SEAT ON THE JURY</span>
       <h2 id="vote-heading">
         You’ve heard the case.
         <br />
         Where do you stand?
       </h2>
-      <p>Your opinion is yours. The court’s assessment comes next.</p>
+      <p>Make your own call before the judge’s ruling is revealed.</p>
       <div className="vote-options" role="group" aria-label="Your verdict">
         {Object.entries(VOTE_LABELS).map(([value, label], index) => (
           <button
@@ -35,7 +34,6 @@ export default function UserVerdict({ vote, onVote }) {
       >
         Record my vote & hear the ruling <span aria-hidden="true">→</span>
       </button>
-      <small>Your vote stays in this session. No account needed.</small>
     </section>
   )
 }

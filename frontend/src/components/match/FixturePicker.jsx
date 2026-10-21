@@ -37,27 +37,16 @@ export default function FixturePicker({
     (currentPage + 1) * pageSize,
   )
   return (
-    <main className="fixture-lobby">
+    <main className="fixture-lobby" id="main-content" tabIndex={-1}>
       <div className="fixture-intro">
-        <span className="broadcast-kicker">
-          THE MATCH IS ONLY HALF THE STORY
-        </span>
-        <h1>
-          Pick your
-          <br />
-          <em>point of view.</em>
-        </h1>
-        <p>
-          Follow the football. Find the turning point.
-          <br />
-          Take the moments that matter to court.
-        </p>
+        <div><span className="broadcast-kicker">Match selection</span><h1>Choose your match.</h1></div>
+        <p>Select a fixture to explore its replay, or create a fresh match.</p>
       </div>
       <section aria-label="Choose a fixture" className="fixture-selection">
         <div className="fixture-section-heading">
           <div>
-            <h2>Your match collection</h2>
-            <span>{matches.length} simulated matches</span>
+            <h2>Fixtures</h2>
+            <span>{matches.length} available</span>
           </div>
           <button
             type="button"
@@ -91,14 +80,14 @@ export default function FixturePicker({
                   <span>
                     {match.generation_mode === 'varied-v1'
                       ? 'NEW MATCH'
-                      : 'DEMO'}{' '}
+                      : 'FIXTURE'}{' '}
                     /{' '}
                     {String(currentPage * pageSize + index + 1).padStart(
                       2,
                       '0',
                     )}
                   </span>
-                  <span>{selected ? 'SELECTED' : '90 MIN'}</span>
+                  <span>{selected ? '✓ Selected' : '90 min'}</span>
                 </span>
                 <span className="fixture-clubs">
                   <ClubCrest club={home} />
@@ -111,7 +100,7 @@ export default function FixturePicker({
                   <strong>{away.name}</strong>
                 </span>
                 <span className="fixture-tile-footer">
-                  {selected ? 'Your fixture' : 'Choose fixture'}
+                  {selected ? 'Ready for replay' : 'Select fixture'}
                   <BroadcastIcon name={selected ? 'ball' : 'arrow'} size={16} />
                 </span>
               </button>
@@ -145,8 +134,7 @@ export default function FixturePicker({
         ) : null}
         {creating ? (
           <p className="fixture-creation-status" role="status">
-            Preparing a new 90 minutes. Your existing matches are safe to
-            revisit.
+            Creating your match…
           </p>
         ) : null}
         {creationError ? (
@@ -171,7 +159,7 @@ export default function FixturePicker({
             <i className="status-dot" />{' '}
             {selected
               ? `Selected: ${selected.home_team} vs ${selected.away_team}`
-              : 'Fictional clubs. Real debate.'}
+              : 'Select a fixture to continue.'}
           </span>
           <button
             type="button"
@@ -184,9 +172,6 @@ export default function FixturePicker({
           </button>
         </div>
       </section>
-      <div className="fixture-disclosure">
-        SIMULATED MATCH DATA <span>•</span> FOOTBALL COURTROOM
-      </div>
     </main>
   )
 }

@@ -69,10 +69,9 @@ export default function MatchScene() {
   const duration = events.at(-1)?.timestamp ?? 5400
 
   return (
-    <main className="broadcast-scene">
+    <main className="broadcast-scene" id="main-content" tabIndex={-1}>
       <div className="broadcast-scene-heading">
         <div>
-          <span className="broadcast-kicker">MATCH CENTRE</span>
           <h1>
             {matchData?.home_team} <span>vs</span> {matchData?.away_team}
           </h1>
@@ -104,7 +103,6 @@ export default function MatchScene() {
               state={state}
               timestamp={replayTimestamp}
             />
-            <span className="broadcast-watermark">FC / BROADCAST</span>
           </div>
           <PitchStage
             event={currentEvent}
@@ -153,12 +151,6 @@ export default function MatchScene() {
           onSeek={seekReplay}
         />
       </div>
-      <footer className="broadcast-footer">
-        <span>
-          FOOTBALL COURTROOM <b> / </b> REPLAY STUDIO
-        </span>
-        <span>SIMULATED MATCH · FICTIONAL CLUBS & PLAYERS</span>
-      </footer>
     </main>
   )
 }

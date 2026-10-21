@@ -101,7 +101,7 @@ export default function EvidencePlayer({ trial, match, timestamp, onSeek, citedE
     <section className="court-evidence" aria-label="Incident evidence replay">
       {citedEventId && <p className="citation-focus" role="status">Cited moment selected · {formatClock(trial.knownEvents.find((event) => event.event_id === citedEventId)?.timestamp ?? timestamp)}</p>}
       <div className="evidence-title-row">
-        <span className="trial-overline">EXHIBIT / THE MATCH RECORD</span>
+        <span className="trial-overline">Match evidence</span>
         <span>Recorded through {formatClock(trial.bounds.end)}</span>
       </div>
       <div
@@ -123,7 +123,6 @@ export default function EvidencePlayer({ trial, match, timestamp, onSeek, citedE
             {item.label}
           </button>
         ))}
-        <span>CASE REPLAY</span>
       </div>
       <div className="court-evidence-screen">
         <Scorebug

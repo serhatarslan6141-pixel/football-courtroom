@@ -71,11 +71,9 @@ function TrialRoom({ trial, invalid }) {
     away = clubFor(matchData, 'away')
   const busy = ['preparing', 'loading'].includes(aiTrial?.status)
   return (
-    <main className="courtroom-scene">
+    <main className="courtroom-scene" id="main-content" tabIndex={-1}>
       <div className="court-docket">
-        <span>
-          <i /> THE PEOPLE’S GAME. THE PEOPLE’S COURT.
-        </span>
+        <span>Case review</span>
         <span>{trial.label}</span>
       </div>
       <div
@@ -97,6 +95,7 @@ function TrialRoom({ trial, invalid }) {
           INCIDENT <time>{formatClock(trial.incidentTimestamp)}</time>
         </span>
       </div>
+      <TrialProgress stage={trialStage} furthest={trialFurthestStage} onNavigate={setTrialStage} />
       <div className={`court-room stage-${trialStage}`}>
         <CourtroomSet />
         <JudgeBench stage={trialStage} />
@@ -169,13 +168,7 @@ function TrialRoom({ trial, invalid }) {
         <AgentTrace trial={trial} loading={aiTrial?.status === 'loading'} onCite={citeEvent} sealed={!caseVote} />
       </div>
       {aiTrial?.status === 'confirmation' ? <TrialConfirmation onConfirm={confirmTrial} onCancel={cancelTrial} returnFocus={beginButton} /> : null}
-      <TrialProgress
-        stage={trialStage}
-        furthest={trialFurthestStage}
-        onNavigate={setTrialStage}
-      />
-      <div className="trial-footer">
-        {stageIndex > 0 ? (
+      {stageIndex > 0 && <div className="trial-footer">
           <button
             type="button"
             className="court-text"
@@ -183,9 +176,6 @@ function TrialRoom({ trial, invalid }) {
           >
             ← {TRIAL_STAGES[stageIndex - 1].label}
           </button>
-        ) : (
-          <span>A MOMENT ON THE PITCH. A QUESTION FOR THE COURT.</span>
-        )}
         {trialStage === 'evidence' || trialStage === 'arguments' ? (
           <button
             type="button"
@@ -197,10 +187,8 @@ function TrialRoom({ trial, invalid }) {
               : 'Make your call'}{' '}
             <span aria-hidden="true">→</span>
           </button>
-        ) : (
-          <small>SIMULATED MATCH · REAL DEBATE</small>
-        )}
-      </div>
+        ) : null}
+      </div>}
     </main>
   )
 }
@@ -233,7 +221,7 @@ export default function CourtroomScene() {
   )
   if (!trial)
     return (
-      <main className="court-empty">
+      <main className="court-empty" id="main-content" tabIndex={-1}>
         <h1>The court is waiting.</h1>
         <p>
           Return to the match to discover a case with a complete evidence
