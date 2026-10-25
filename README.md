@@ -4,6 +4,8 @@
 
 I built Football Courtroom because the best football arguments rarely end with a stat or a replay. Was that a wasted chance, a real momentum shift, or just a convincing story after the fact? The idea was to turn those arguments into a courtroom: examine the evidence, hear both sides, make your own decision, then see how an AI judge weighs the same case.
 
+The courtroom's AI uses **GPT-4.1 mini deployed in Microsoft Foundry**, with **Microsoft Agent Framework** coordinating Evidence, Prosecution, Defense and Judge. They select evidence, debate its meaning and explain a ruling. The Python simulator provides the facts; the agents supply the interpretation.
+
 Built for the **Premier League × Microsoft Inside the Game hackathon**. The demo runs locally. All clubs, players and match events are fictional; there is no real match footage or live football data feed.
 
 ## What you can do
@@ -15,28 +17,38 @@ Built for the **Premier League × Microsoft Inside the Game hackathon**. The dem
 - Hear Prosecution and Defense, inspect their citations, and cast your own vote before the judge's ruling is revealed. Your vote stays independent of the AI's decision.
 - Expand **Behind the verdict** to inspect actual agent handoffs and review cited events. Evidence replay stays inside the case window and doesn't move your original match replay position.
 
-## How the agents work
+## How Microsoft AI powers the courtroom
 
-The live pipeline uses **Microsoft Agent Framework** to coordinate four agents, backed by an **Azure OpenAI GPT-4.1 mini deployment in Microsoft Foundry**, through the Responses API:
+I use **Microsoft Foundry's Azure OpenAI GPT-4.1 mini deployment** to generate the agents' reasoning and arguments through the Responses API. **Microsoft Agent Framework** builds the sequential workflow and passes validated submissions between its four roles:
 
-```text
-Synthetic match events → case window + verified facts
-                           ↓
-           Evidence → Prosecution → Defense → Judge
-                           ↓
-              Validated trial → React courtroom
+- **Evidence Agent** reads verified match facts and incident records, selects up to three relevant facts, and explains their relevance.
+- **Prosecution Agent** argues why the moment mattered using those facts.
+- **Defense Agent** challenges Prosecution's argument with counterevidence, missing context or another reasonable interpretation.
+- **Judge Agent** weighs both sides, explains its ruling and uncertainty, and can leave the case Inconclusive when the evidence is insufficient or balanced.
+
+Agent Framework runs **Evidence → Prosecution → Defense → Judge** sequentially, passing validated work forward alongside the shared case evidence. Defense sees Prosecution's argument; the Judge receives both sides. Each agent's view stays within the same closed evidence window.
+
+Python calculates exact facts and statistics and builds citations from authorized synthetic events. Agents select existing fact IDs and supply interpretations. Case-specific structured-output schemas and an independent grounding validator reject unknown references, future evidence and invalid submissions before each handoff. These checks reduce unsupported claims without guaranteeing that interpretations are right. If a stage fails, the pipeline stops and the courtroom uses recorded fallback.
+
+In **Behind the verdict**, users can inspect actual execution status, handoffs and event citations. The Judge's reasoning remains sealed in the interface until they vote.
+
+## From match facts to courtroom reasoning
+
+```mermaid
+flowchart TD
+    UI["React: replay, courtroom and vote"] <-->|HTTP| API["FastAPI backend"]
+    SIM["Python synthetic match engine"] -->|Events, stats and case-window facts| API
+    SAVED["Cached AI trial or deterministic fallback"] -->|No model calls| API
+    API -->|Confirmed live generation only| FLOW["Microsoft Agent Framework<br/>Evidence → Prosecution → Defense → Judge"]
+    FLOW <-->|Responses API| MODEL["Microsoft Foundry<br/>Azure OpenAI GPT-4.1 mini"]
+    FLOW -->|Validated submissions and execution trace| API
 ```
 
-- **Evidence** selects up to three relevant facts and explains why they matter.
-- **Prosecution** builds the strongest supported argument for the allegation.
-- **Defense** challenges that argument using the same record and its limitations.
-- **Judge** weighs both sides and rules for Prosecution, Defense, or Inconclusive.
+The match engine is deterministic Python. Foundry generates the reasoning for explicitly approved live trials. React displays the result in the existing five-stage courtroom.
 
-Python calculates the exact facts and statistics and constructs citations from authorized references. The agents select existing fact IDs rather than inventing events or copying exact values. Case-specific structured-output schemas and an independent grounding validator check their submissions before anything is handed to the next agent. Unknown references, future evidence and invalid submissions fail closed.
+**One successful, validated four-agent trial** is included in `backend/data/courtroom-trials/`. It persists on disk and can be replayed without credentials or new Azure calls. Uncached cases use clearly labeled deterministic fallback when live AI is unavailable. For optional live generation, explicit confirmation, daily request limits, per-trial call limits, zero automatic retries and duplicate protection control usage. Navigation and rerenders never start generation.
 
-The app clearly separates **cached AI analysis** from **deterministic fallback**. One successful, validated four-agent trial is included in `backend/data/courtroom-trials/`. Other cases use recorded analysis when AI is unavailable. Fallback is never presented as a completed AI trial, and live inference never starts from navigation or a rerender.
-
-The interface is **React + Vite**, with SVG replay and courtroom graphics. The backend is **Python + FastAPI**; the match simulator uses the Python standard library. The Microsoft integration uses Agent Framework's OpenAI provider and the official OpenAI Python SDK. See the pinned [agent dependencies](backend/requirements-agents.txt) and [pipeline notes](docs/pipeline-stabilization.md) for implementation details.
+The rest of the stack is **React + Vite** and SVG for the interface, and **Python + FastAPI** for the backend. The [workflow](backend/app/courtroom_workflow.py) uses Agent Framework's OpenAI provider and the official OpenAI Python SDK; versions are pinned in the [agent dependencies](backend/requirements-agents.txt).
 
 ## Run locally — no Azure account or charges needed
 
